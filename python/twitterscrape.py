@@ -1,6 +1,15 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+# # Twitter API 
+# -  Twitter requires that you have an account --> need authentification credentials 
+# -  Twitter has a number of APIs
+# 1. REST API (access to read and write twitter data)
+# 2. Streaming API (for real-time analytics) 
+# 3. Firehose API (to access all public statuses - this one is expensive and not publicly available) 
+# For beginners, use TWEEPY - balance between usability and capability 
+
+
 import selenium
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
