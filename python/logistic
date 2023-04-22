@@ -1,0 +1,18 @@
+# CHECK MULTICOLLINEARITY VIA VIF FIRST AS IMPACTS INTERPRETATION
+# - Interpretation: 1 = not correlated, 1-5 = moderately correlated, > 5 = highly correlated. Needs intercept term
+vif = pd.DataFrame()
+vif["variables"] = X.columns
+vif["VIF"] = [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
+print(vif)
+
+corr_df = X.corr().abs()  # X[cols].corr().abs() 
+triu_mask = np.triu(np.ones_like(corr_df, dtype=bool))
+tri_df = corr_df.mask(triu_mask)   # sets half the values to Na values 
+sns.heatmap(tri_df, center=0, cmap= sns.diverging_palette(h_neg=10,h_pos=240,as_cmap=True), linewidths=1)
+
+
+X_subset_constant = sm.add_constant(X_subset)
+X_train, X_test, y_train, y_test = train_test_split(X_subset_constant, y, test_size = 0.01, random_state = 123)
+model = sm.Logit(y_train, X_train)
+cols = X_subset_constant.columns
+logistic_regression_performance(X_train, X_test, y_train, y_test, learner = model, cols = cols, threshold = 0.5, feature_importance = True)
