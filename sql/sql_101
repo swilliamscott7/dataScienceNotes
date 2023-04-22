@@ -1,0 +1,290 @@
+## Still need to read this : https://ice-panda.medium.com/how-to-select-data-from-columns-contain-a-substring-from-bigquery-4c4ba3043531
+
+TIP : Try to avoid writing very long queries! Should decompose into smaller (testable) functions, each with a single clearly defined responsibility.
+- This makes them shorter, simpler, easier to comprehend, easier to test, easier to refactor. 
+- Can even write unit tests for each if simple enough 
+- For most decomposition into views will get exact same performance / same amount of data processed
+
+- View vs Table (View dynamically queries, essentially a stored query. Good for powering dashboards etc.)
+- Table best for snapshot where do not want data to change e.g. to train a model. Or where query speed key. 
+- Consider storage vs querying cost trade-off
+
+
+- Indexing - now replaced with partitioning 
+- Sharding Vs Partitioning tables ??? 
+- Nested fields ?? Structs / Repeated records etc. 
+
+-- gap & island problem - dealing with contiguous data 
+# Creates a store procedure to run unit Tests in BQ using UDFs written in Javascript : https://towardsdatascience.com/sql-unit-testing-in-bigquery-here-is-a-tutorial-64fc7a6b377 
+DECLARE viewing_months INT64;
+SET viewing_months = 3;
+DECLARE downgrades_start_date DATE;
+SET downgrades_start_date = '2020-02-12';
+
+# Create a View
+CREATE OR REPLACE VIEW `SSC24.testView` AS (
+SELECT Code, Name, Year from Campaign_Evaluation.metadata
+);
+
+# Create a table using an existing table
+CREATE OR REPLACE TABLE `SSC24.testTable` AS (
+SELECT Code, Name, Year from Campaign_Evaluation.metadata
+);
+
+# Create a table from scratch
+CREATE OR REPLACE TABLE  `SSC24.testTable` ( # /IF NOT EXISTS
+  ADDRESS_ID STRING,
+  INDIVIDUAL_ID STRING NOT NULL,
+  FIRST_NAME STRING,
+  LAST_NAME STRING,
+  SALARY INT64,
+  RETIRED BOOL,
+  DEC FLOAT64
+);
+
+# Manually add to table n.b. cannot use DML to a view
+INSERT INTO SSC24.testTable (Code, Name, Year) VALUES
+  ('R454', 'Fake_cAMP', 2013),	
+  ('R401', 'FakeCamp2', 2014);
+
+# Update
+UPDATE SSC24.testTable
+  SET Name = 'FakeCampaign', Code = 'R400'
+  WHERE Code = 'R454';
+  
+UPDATE SSC24.testTable
+  SET Name = CASE WHEN Name LIKe '%Fake%' THEN 'EntsCamp' ELse Name end
+  WHERE Code = 'R454';
+  
+# Delete - Can only delete table using GUI/CI # 
+DELETE FROM SSC24.testTable WHERE Code = 'R454'; # CAN OMIT 'FROM'
+
+# REMOVE TABLE CONTENTS # 
+TRUNCATE TABLE SSC24.testTable; # Removes all contents of table, but keeps schema in tact 
+
+
+#### WORKING WTH ARRAYS ###
+
+# HERE WE WANT TO UNNEST THE ARRAY, SO EACH VALUE HAS ITS OWN ROW # 
+WITH A AS (
+SELECT APPROX_QUANTILES(column1,10) AS quantile
+FROM table 
+)
+
+SELECT ROUND(q_item,2) AS aop_diff, 
+FROM A, UNNEST(quantile) AS q_item
+
+ARRAY_AGG
+STRING_AGG
+
+####################################################
+####################################################
+
+################## ANALYTICAL QUERIES ##############
+
+####################################################
+
+SELECT REPLACE(FIRST_NAME, 'a', 'A') FROM names WHERE FIRST_NAME LIKE 'a%'
+SELECT CONCAT(FIRST_NAME, ' ', LAST_NAME) FROM employees    OR SELECT FIRST_NAME | ' ' | LAST_NAME FROM employees
+SELECT * FROM worker order by FIRST NAME ASC, LAST_NAME DESC 
+SELECT * FROM worker WHERE name NOT IN ('Scott', 'Graham')
+# Every second row - evens only
+SELECT * EXCEPT(C) FROM ( 
+				SELECT *, ROW_NUMBER() OVER() AS C FROM `table`
+				) ABC WHERE MOD(C,2) = 0   # = 1 if odds only 
+
+
+SELECT *, AVG(Spend) OVER(PARTITION BY Product_Area ) AS C FROM table
+SELECT *, Spend - AVG(Spend) OVER(PARTITION BY Product_Area ) AS SpendDiff FROM table
+
+
+# Joins & appends
+SELECT * FROM table1
+INTERSECT # Returns only rows that exist in both table1 and table2
+SELECT * FROM table2
+
+SELECT * FROM table1 AS t1
+		INNER JOIN table2 USING (profile_id)
+		FULL OUTER JOIN table2 AS t2 ON t1.product_id = t2.product_id
+		RIGHT OUTER JOIN table3 AS t3 on t1.profile_id = t3.profile_id 
+
+UNION ALL # Returns all rows including dupes
+UNION # returns unique value combinations
+
+
+# Pattern Matching # 
+SELECT * FROM campaigns WHERE prod LIKE '%TV%'
+SELECT * FROM campaigns WHERE campaignName LIKE 'Vodafone__' # One underscore represents a single character 
+
+# NULLS # 
+COALESCE(Spend, 'Unknown')   # handles nulls
+SELECT * FROM Campaign_Evaluation.metadata WHERE Campaign_Strand_ != 'Brand' OR Campaign_Strand_ IS NULL   # If do not account for NULLs then these rows are removed !!!
+COUNT(*) WILL INCLUDE NULLS WHEREAS AVG()/SUM() ETC WONT
+
+# WINDOW FUNCTIONS# 
+# i.e. 	a calculation across a set of table rows which does not cause rows to become grouped into a single output row — the rows retain their separate identities 
+...... OVER (PARTITION BY ..... ORDER BY ...)
+first_value(salary) OVER (PARITTION BY DEPARTMENT ORDER BY SALARY DESC)
+SUM(value) OVER (PARTITION BY customer ORDER BY DATE ROWS BETWEEN 5 PRECEDING AND CURRENT ROW) 
+SUM(value) OVER (PARTITION BY customer ORDER BY DATE ROWS BETWEEN 5 FOLLOWING AND CURRENT ROW)
+SUM(value) OVER (PARTITION BY customer ORDER BY DATE ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)  #i.e. cumulative
+SUM(value) OVER (PARTITION BY customer ORDER BY DATE ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING )  #i.e. lag function 
+SUM(value) OVER (PARTITION BY customer ORDER BY DATE ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)  #i.e. lag function  
+
+################ In bigquery #######################
+AVG(Impact) OVER (PARTITION BY Campaign_Code
+                   ORDER BY Campaign_Code DESC
+                   ROWS BETWEEN 5 PRECEDING AND CURRENT ROW ) AS moving_avg
+						
+LEAD()
+LAG() 
+NTILE()
+PERCENTILE_CONT(col, 0.5) OVER() AS median
+RANK() # Where tied, the subsequent row rank will be skipped 
+DENSE_RANK() # follows sequential order no matter if tied 
+ROW_NUMBER() # Sequential order irrelevant of ties - Non-deterministic if two rows are identical 
+FIRST_VALUE()
+LAST_VALUE()
+
+### DATE FUNCTIONS ####
+DATE_ADD() 
+DATE_DIFF()
+DATE_SUB()
+SELECT CURRENT_DATE() AS TODAY_DATE
+SELECT EXTRACT(MONTH FROM DTTM_EVENT) AS mth
+
+### STRING MANIPUALTION ###
+LOWER()
+UPPER()
+RTRIM() / LTRIM() / TRIM() # removes padded whitespace
+LENGTH() 
+SUBSTR('The Cat', 5, 7) 
+
+### NUMERIC #####
+ROUND(123.54, 2) # 2 Decimals
+ROUND(12, -1) # ROUNDS TO 1 SIG FIG to the left of the decimal point i.e. 10 here 
+SELECT MOD(10,3)
+SELECT CEILING(5.5) # ROUNDS UP TO NEAREST INTEGER
+SELECT FLOOR(5.5) # ROUNDS DOWN TO NEAREST INTEGER 
+STDDEV() 
+SAFE_DIVIDE() # Accounts for where NULLs or 0s exist 
+
+### RECODING ###
+IF()
+REPLACE()
+CASE WHEN viewing_mts < 10 THEN '1-10' 
+	 WHEN viewing_mts > 10 THEN '>10' 
+	 ELSE viewing_mts END AS binned_mts
+
+
+### DTYPES ####
+SELECT CAST('2018-01-01' AS DATE)
+SELECT CAST('01' AS FLOAT64)
+SELECT CAST(123 AS STRING)
+
+
+### MORE ADVANCED 
+
+ROLLUP() # USED WITH 'GROUP BY' TO CREATE SUBTOTALS & GRANDTOTALS  - THE SUMMARISED AMOUNTS ARE BASED ON THE COLUMNS PASSED TO THE ROLLUP OPERATOR
+GROUPING SETS() 
+
+
+###### STRING_AGG #########
+WITH A AS (
+SELECT '123' AS serial_number, 'Depp' AS query, 'Chocolate' AS vod
+UNION ALL 
+SELECT '123' AS serial_number, 'Depp' AS query, 'Willy Wonka' AS vod
+UNION ALL
+SELECT '123' AS serial_number, 'Depp' AS query, 'Tourist' AS vod
+)
+SELECT 
+  serial_number
+ ,query
+ ,STRING_AGG(vod ORDER BY vod) AS Text 
+FROM A 
+GROUP BY serial_number, query
+######################################
+
+# DOES ONE COLUMN CONTAIN A SUBSTRING OF ANOTHER COLUMN
+
+IF(b.search_result_programme_name LIKE CONCAT('%', a.action_query, '%'), b.search_result_programme_name, a.action_query) AS action_query_intent
+
+############################################
+############### GCP Specific ###############
+############################################
+
+SELECT column_name # or select * for more details e.g. dtypes etc.
+FROM project.dataset.INFORMATION_SCHEMA.COLUMNS
+WHERE table_name = 'cust_weekly_base' AND lower(column_name) like '%sport%'
+
+
+# REGEX #
+SELECT REGEXP_REPLACE('Emmerdale omnibus', r"( omnibus)", "") 
+SELECT TRIM(REGEXP_REPLACE(lower(PROGRAMME_NAME), r"(\.\.\.)|(new: )|( season [0-9]+)|( s[0-9]+)|( ep[0-9]+)|(:)|( \[.*\])|(,)", "") ) # USE THE | to use multiple
+SELECT REGEXP_CONTAINS(season_number,"^[0-9]{1,4}$") # value must contain numeric digits only and cannot be more than 4 digits in length i.e. 20021 = false
+
+#########################
+
+select * from unnest([
+  struct
+  (1799867122 as user_id, 158 as product_id, timestamp (null) as expire_time_after_purchase,  70000000 as transaction_id, timestamp '2020-11-23 09:01:00' as created_at),
+  (1799867122,158,null,70000001,'2020-11-23 09:15:00.042308 UTC'),
+  (1799867122,158,null,70000002,'2020-11-23 09:30:00.042308 UTC'),
+  (1799867122,158,null,70000003,'2020-11-23 09:45:00.042308 UTC')
+  ]
+  ) as t
+
+### PARAMETERISE QUERIES USING SCRIPTING STATEMENTS ###
+
+DECLARE YEAR_START INT64;
+SET EXTRACT(YEAR FROM CURRENT_YEAR());
+SELECT * FROM TABLE_NAME WHERE YEAR = YEAR_START
+
+#### TO PARAMETERISE TABLE NAMES : USE WILD CARDS AS CANNOT HARDCODE a variable with full table name ######
+DECLARE dataset_name STRING;
+SET dataset_name = 'sports_dg_sample_set_undersampled_weekb4';
+
+### Class imbalance check ### N.B. CANNOT USE TABLE SUFFIX WHERE IT IS A VIEW AND NOT A TABLE E.G. WITH VESPA TABLES (THOUGH THINK THESE SHOULD BE PARTITIONED INSTEAD TO AVOID ANY OF THIS)
+SELECT target, 
+       count(account_number) as num_accts,
+       count(account_number)/SUM(count(account_number)) OVER() AS proportion_accts
+  FROM `project.dataset.*`
+  WHERE _TABLE_SUFFIX = dataset_name
+  GROUP BY 1;
+  
+  
+-- Example of Dynamic SQL - ONLY WAY TO DYNAMICALLY ADDRESS A TABLE AS CANNOT OTHERWISE PARAMETERISE IT - ISSUE IS CANNOT WRAP THIS IN A CREATE OR REPLACE STATEMENT 
+DECLARE year INT64 DEFAULT 2015;
+EXECUTE IMMEDIATE format("""
+SELECT COUNT(*)
+FROM `bigquery-public-data`.new_york.tlc_yellow_trips_%d
+""", year);
+  
+  
+  ##### TO GET NULL COUNTS AND NULL PROPORTIONS FOR ALL COLUMNS WHERE LOTS OF COLUMNS:
+  https://dabblingwithdata.wordpress.com/2021/05/17/a-quick-way-to-count-the-number-of-null-values-in-each-field-of-a-bigquery-table/
+  
+  WITH ABC AS (
+
+  SELECT * FROM  table
+
+)
+
+,null_volumes AS (
+
+SELECT column_name, 
+       COUNT(1) AS null_count_volumes,
+FROM  ABC,
+UNNEST(REGEXP_EXTRACT_ALL(TO_JSON_STRING(ABC), r'"(\w+)":null')) column_name
+GROUP BY column_name
+ORDER BY null_count_volumes DESC
+
+)
+
+SELECT column_name, 
+       null_count_volumes,
+       null_count_volumes/(SELECT COUNT(1) FROM ABC) AS null_prop
+  FROM null_volumes
+ORDER BY null_prop DESC
+
+##### Sharding ? #####
