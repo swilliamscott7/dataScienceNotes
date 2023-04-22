@@ -1,0 +1,295 @@
+# !pip install spotipy
+
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
+import spotipy.util as util
+
+# Data Manipulation Packages
+import pandas as pd
+import numpy as np
+
+# DataViz
+import matplotlib.pyplot as plt
+from matplotlib.pyplot import figure 
+import seaborn as sns
+
+# Clustering & PCA
+from scipy.cluster.vq import kmeans, vq, whiten
+from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans, AgglomerativeClustering
+from scipy.cluster.hierarchy import dendrogram
+from scipy.cluster.hierarchy import fcluster, linkage
+
+# Misc Packages
+from tqdm import tqdm_notebook # gives progress bars
+import random
+
+# ML Packages 
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.ensemble import AdaBoostClassifier, RandomForestClassifier
+from sklearn.metrics import accuracy_score
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.metrics import accuracy_score, confusion_matrix, recall_score, roc_auc_score, precision_score, roc_curve, f1_score, auc, precision_recall_curve, classification_report 
+from sklearn.feature_selection import SelectFromModel  # random forest feature importance
+
+
+cid = '' # get from api
+secret = '' # get from api
+username = "Stuart Scott"
+client_credentials_manager = SpotifyClientCredentials(client_id=cid, client_secret=secret) 
+
+# sp.Spotify() instantiates a class - in this case a Spotify Web API
+sp = spotipy.Spotify(client_credentials_manager=client_credentials_manager)
+
+scope = 'user-library-read playlist-read-private'
+token = util.prompt_for_user_token(username, scope, cid, secret, redirect_uri= 'http://localhost:8880/spottie')
+if token:
+    sp = spotipy.Spotify(auth=token)
+else:
+    print("Can't get token for", username)
+    
+user = sp.user('11126102093')    # for some reason doesn't use string form of username, need code  
+print(user)
+
+
+def extract_song_data(playlist_creator, playlist_id, target):
+    '''Given the playlist owner and the url code, extract all songs from the playlist and audio metadata
+    
+    :param playlist_creator: a string of the name of the playlist creator
+    :param playlist_id: a string containing the playlist id which is a collection of alphanumeric characters found in the URL
+    :param target: an integer indicating whether a playlist contains liked songs (1) or disliked songs (0)
+    :returns : a dataframe for the playlist containing all audio metadata and song names
+    '''
+    playlist = sp.user_playlist(playlist_creator, playlist_id)
+    tracks = playlist["tracks"]
+    songs = tracks["items"] 
+    while tracks['next']:
+        tracks = sp.next(tracks)
+        for item in tracks["items"]:
+            songs.append(item)
+    ids = []
+    for i in range(len(songs)):
+        ids.append(songs[i]['track']['id'])
+        
+    features = []
+    # can only get audio features for 50 songs at a time:
+    for i in range(0,len(ids),50):
+        audio_features = sp.audio_features(ids[i:i+50]) # 50 song chunk
+        for track in audio_features:
+            features.append(track)
+            features[-1]['target'] = target
+        
+    song_names = []
+    for i in range(len(songs)):
+        song_names.append(songs[i]['track']['name'])
+        
+    song_number = 0
+    for song in features:
+        song.update({'song_name':song_names[song_number]})
+        song_number = song_number + 1
+        
+    return pd.DataFrame(features)
+    
+    kolsch_df = extract_song_data(playlist_creator = "Spotify", playlist_id = "37i9dQZF1E4kJc6O0jCFMc", target = 1)
+darker_techno_df = extract_song_data('amyygraham','69guwNhYR5uCFkEQDmIZnL',1)
+dance_classics_df = extract_song_data('Spotify', '37i9dQZF1DX8a1tdzq5tbM', 1)
+synthwave_df = extract_song_data('Erhan Akkaya', '6qpXCcLWtFjPjMVNxtfHrl', 1)
+
+blues_df = extract_song_data('Spotify', '37i9dQZF1DXd9rSDyQguIk', 0)
+country_df = extract_song_data('Digster Playlists', '6nU0t33tQA2i0qTI5HiyRV', 0)
+classical_df = extract_song_data('Spotify', '37i9dQZF1DWWEJlAGA9gs0', 0)
+motown_df = extract_song_data('benildabm', '1bZNAY2boFGQn3r06V6QG1', 0)
+
+final_df = kolsch_df.append([darker_techno_df, dance_classics_df, synthwave_df, blues_df, country_df, classical_df, motown_df], ignore_index=True)
+
+_ = trainingData.loc[trainingData['target'] == 1, 'danceability'].hist(color = 'red', label = 'Like')
+_ = trainingData.loc[trainingData['target'] == 0, 'danceability'].hist(color = 'blue', label = 'Dislike')
+_ = plt.xlabel('Danceability')
+_ = plt.ylabel('Frequency')
+plt.legend(loc = "upper left")
+plt.show()
+
+
+def PCA(explained_variance_increase_stopping_threshold, X_train):
+    from sklearn.decomposition import PCA
+     
+    # Find out the cumulative explained portion of number of components
+    pca = PCA().fit(X_train) # fit PCA to dataframe
+    cum_ratio = pd.DataFrame(np.cumsum(pca.explained_variance_ratio_), columns=['cum_explained_ratio']) # calculate cumulative explained ratio
+    cum_ratio['delta'] = (cum_ratio['cum_explained_ratio'] - cum_ratio['cum_explained_ratio'].shift(1))/cum_ratio['cum_explained_ratio'].shift(1) # calculate explained variance increase in %
+    num_components = cum_ratio[cum_ratio['delta'] < explained_variance_increase_stopping_threshold].index[0] # number of component is selected when variance explained increase is less than the defined value
+     
+    # Optional to plot cumulative explained variance vs number of components
+    plt.figure()
+    plt.style.use('seaborn')
+    plt.plot(cum_ratio['cum_explained_ratio'])
+    plt.xlabel('Number of Components')
+    plt.ylabel('Cumulative Explained Variance')
+    plt.show()
+     
+    print("Number of components needed is: ",num_components) # print number of components needed
+     
+    # Print components loading
+    for i in range(0, num_components):
+        comp_Loadings = np.asarray(pca.components_[i])[np.argsort(np.abs(pca.components_[i]))[::-1]][0:10]
+        comp_Names = np.asarray(X_train.columns.values)[np.argsort(np.abs(pca.components_[i]))[::-1]][0:10]
+        comp_df = pd.DataFrame({'Comp_Names_'+str(i): comp_Names, 'Comp_Loading_'+str(i):comp_Loadings}, columns=['Comp_Names_'+str(i), 'Comp_Loading_'+str(i)])
+        print(comp_df)
+     
+    pca_ml = PCA(n_components=num_components).fit(X_train) # insert number of component per calculation above
+     
+    return pca_ml
+    PCA(0.6, X)
+    
+    numeric_features_df.drop(columns = 'cluster_labels', inplace  = True)
+    pca = PCA(n_components=2)
+pca.fit(numeric_features_df)
+print(pca.explained_variance_ratio_)
+print(pca.singular_values_)
+
+# fit and transform values before plotting: 
+
+# check factor loadings behind each principal component:
+
+# Clustering
+
+#- Take care of anomalies / outlier treatment
+#- Works better on normally distributed feature sets
+
+
+### KMEANS #####
+# Set random seed for reproducibility of cluster assignment
+random.seed(100)
+
+# Elbow Method for Optimum Number of K Centroids  
+distortions = []
+num_clusters = range(1, 7)
+
+# Create a list of distortions from the kmeans function
+for i in num_clusters:
+    cluster_centers, distortion = kmeans(numeric_features_df.drop(columns = 'target', axis = 1), i)
+    distortions.append(distortion)
+
+# Create a data frame with two lists - num_clusters, distortions
+elbow_plot = pd.DataFrame({'num_clusters': num_clusters, 'distortions': distortions})
+
+# Creat a line plot of num_clusters and distortions
+sns.lineplot(x='num_clusters', y='distortions', data = elbow_plot)
+plt.xticks(num_clusters)
+plt.show()
+
+# Works out centroids
+centroids, distortion = kmeans(numeric_features_df.drop(columns = 'target', axis = 1), 2)
+# assigns observations to a cluster, based on the centroids
+numeric_features_df['cluster_labels'], _ = vq(numeric_features_df.drop(columns = 'target', axis = 1), centroids)
+
+# Rename Clusters
+numeric_features_df.loc[numeric_features_df['cluster_labels'] == 0, 'cluster_labels'] = 'tech_cluster'
+numeric_features_df.loc[numeric_features_df['cluster_labels'] == 1, 'cluster_labels'] = 'relaxing_cluster'
+
+sns.scatterplot(x = 'danceability', y='speechiness', hue= 'cluster_labels', data = numeric_features_df)
+plt.legend(loc = 'upper right')
+plt.show()
+
+
+# numeric_features_df.groupby(['target', 'cluster_labels']).count()
+pd.crosstab(numeric_features_df['target'], numeric_features_df['cluster_labels'])
+# numeric_features_df.head()
+print(numeric_features_df.groupby('cluster_labels')['target'].count())
+numeric_features_df.groupby('cluster_labels')['energy'].mean()
+
+
+###### hierarchical clustering #####
+
+
+%pylab inline
+scaled_data = whiten(X)
+distance_matrix = linkage(scaled_data, method = 'ward', metric = 'euclidean')
+
+# Assign cluster labels i.e. add an additional column to df
+X['cluster_labels'] = fcluster(distance_matrix, 2, criterion='maxclust')
+
+# Create a dendrogram
+dn = figure(figsize(15,15))
+#dn = dendrogram(distance_matrix, labels = trainingData.index, leaf_font_size = 8, leaf_rotation = 90, color_threshold = 10)   # to get row names as labels i.e. song names and not just index number
+dn = dendrogram(distance_matrix, labels = trainingData.index, leaf_font_size = 8, color_threshold = 10, orientation = 'right')
+#plt.axhline(y=10, c='grey', lw=1, linestyle='dashed')
+plt.axvline(x=10, c='grey', lw = 1, linestyle = ~'dashed')
+plt.show()
+
+
+#### TRAINING A CLASSIFIER TO PREDICT WHICH SONGS I LIKE AND DO NOT LIKE
+
+numeric_features_df = final_df._get_numeric_data()
+X = numeric_features_df.drop(columns = 'target', axis = 1)
+y = numeric_features_df['target']
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.1, random_state = 42)
+
+
+evaluation_df = pd.DataFrame( index=["accuracy", "recall", "precision", "roc_auc_score"] )
+
+def classifier_evaluation(clf_object, algorithm, df, X_test, y_test, song_identification = False):
+    ''' Using a classifier algorithm, predicts whether a song will be liked or disliked 
+    :param clf_object: a classifier object which has been fit to the training data
+    :param algorithm : string type containing the name of the classifier algorithm used
+    :param df : full song dataset
+    :param X_test: 
+    :param y_test:
+    :param song_identification: should it print out a list of the songs which wer misclassified
+    :returns : evaluation matrix and misclassified songs
+    '''
+    
+    y_predictions = clf_object.predict(X_test)
+    # probability that it is the positive class
+    y_probs = clf_object.predict_proba(X_test)[:,1]
+    algo_evaluation = pd.DataFrame(data=[accuracy_score(y_test, y_predictions),
+                                       recall_score(y_test, y_predictions),
+                                       precision_score(y_test, y_predictions),
+                                       roc_auc_score(y_test, y_probs)],
+                                    index=["accuracy", "recall", "precision", "roc_auc_score"],
+                                    columns = ['{} scores %'.format(algorithm)])
+    try:
+        eval_df = evaluation_df.join(algo_evaluation)
+    except ValueError:
+        error_code = 'This column already exists within the evaluation table, please rename the column or try a different algorithm'
+    # Identify which songs it got incorrect
+    if song_identification:
+        bool = np.invert(np.array(y_test) == logit_preds)
+        misclassified_songs = df.loc[X_test.index, 'song_name'][bool]
+        # Looking at the traits of these misclassified songs : 
+        misclass_df = df[df.song_name.str.contains('|'.join(misclassified_songs))]
+       # print(misclass_df)
+    try:
+        return(eval_df)
+    except UnboundLocalError:
+        print(error_code)
+        return(evaluation_df)
+        
+        
+evaluation_df = classifier_evaluation(LogisticRegression(solver = 'liblinear', random_state = 10).fit(X_train, y_train), 'logit', final_df, X_test, y_test)
+evaluation_df = classifier_evaluation(DecisionTreeClassifier(min_samples_split=100).fit(X_train, y_train), 'decision_tree', final_df, X_test, y_test)
+evaluation_df = classifier_evaluation(KNeighborsClassifier(3).fit(X_train, y_train), 'knn', final_df, X_test, y_test)
+evaluation_df = classifier_evaluation(AdaBoostClassifier(n_estimators=100).fit(X_train, y_train), 'ada_boost', final_df, X_test, y_test)
+evaluation_df = classifier_evaluation(GradientBoostingClassifier(n_estimators=100, learning_rate=.1, max_depth=1, random_state=0).fit(X_train, y_train), 'gbt', final_df, X_test, y_test)
+evaluation_df = classifier_evaluation(RandomForestClassifier(n_estimators=100, criterion = 'gini', max_depth=8, random_state=12).fit(X_train, y_train), 'random_forest', final_df, X_test, y_test)
+evaluation_df
+
+
+
+#### rf feature importance
+
+rf_model = RandomForestClassifier(n_estimators=100, criterion = 'gini', max_depth=8, random_state=12)
+rf_clf = rf_model.fit(X_train, y_train)
+
+# Now plot the feature importance graph: 
+features = X_train.columns
+importances = rf_clf.feature_importances_
+indices = np.argsort(importances)[-len(features):]  # plot all features concerned, otherwise set -10 if wanted top 10 features 
+plt.title('Feature Importances')
+plt.barh(range(len(indices)), importances[indices], color='b', align='center')
+plt.yticks(range(len(indices)), [features[i] for i in indices])
+plt.xlabel('Relative Importance')
+plt.show()
