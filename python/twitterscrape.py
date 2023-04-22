@@ -10,11 +10,19 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 from bs4 import BeautifulSoup as bs
 import time
+from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
 
+# Run headless
+options = Options()
+options.add_argument('--headless')
+options.add_argument("--log-level=3")
+options.add_argument('--disable-gpu') 
 
 #to open driver
 def init_driver():
     driver = webdriver.Chrome()
+#     driver = webdriver.Chrome(ChromeDriverManager().install(), chrome_options=options)
     #pretending to be a human interacting with a website, e.g. account for content loading with page before interacting with it
     driver.wait = WebDriverWait(driver, 5)
     return driver
@@ -136,3 +144,95 @@ for t in tweetss:
         doggotweets.append(tweetdict)
     except:
         pass
+
+
+driver = init_driver()
+driver.get("https://www.bbc.co.uk/news")
+driver.find_element_by_name("q").clear()
+box = driver.wait.until(EC.presence_of_element_located((By.NAME, "q")))
+query = 'shopping'
+box.send_keys(query)
+# submit the query (like hitting return):
+box.submit()
+
+def search_bbc(driver, query):
+ 
+    # wait until the search box has loaded:
+    box = driver.wait.until(EC.presence_of_element_located((By.NAME, "q")))
+ 
+    # find the search box in the html:
+    driver.find_element_by_name("q").clear()
+ 
+    # enter your search string in the search box:
+    box.send_keys(query)
+ 
+    # submit the query (like hitting return):
+    box.submit()
+ 
+    # initial wait for the search results to load
+    wait = WebDriverWait(driver, 10)
+ 
+    try:
+        # wait until the first search result is found. Search results will be tweets, which are html list items and have the class='data-item-id':
+        wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, "li[data-item-id]")))
+ 
+        # scroll down to the last tweet until there are no more tweets:
+        while True:
+ 
+            # extract all the tweets:
+            tweets = driver.find_elements_by_css_selector("li[data-item-id]")
+ 
+            # find number of visible tweets:
+            number_of_tweets = len(tweets)
+ 
+            # keep scrolling:
+            driver.execute_script("arguments[0].scrollIntoView();", tweets[-1])
+ 
+            try:
+                # wait for more tweets to be visible:
+                wait.until(wait_for_more_than_n_elements_to_be_present(
+                    (By.CSS_SELECTOR, "li[data-item-id]"), number_of_tweets))
+ 
+            except TimeoutException:
+                # if no more are visible the "wait.until" call will timeout. Catch the exception and exit the while loop:
+                break
+ 
+        # extract the html for the whole lot:
+        page_source = driver.page_source
+ 
+    except TimeoutException:
+ 
+        # if there are no search results then the "wait.until" call in the first "try" statement will never happen and it will time out. So we catch that exception and return no html.
+        page_source=None
+ 
+    return page_source
+
+search_bbc(driver, query='dogs')
+
+if __name__ == "__main__":
+ 
+    # start a driver for a web browser:
+    driver = init_driver()
+    
+ 
+    # log in to twitter (replace username/password with your own):
+    username = 'StuartS97464781'
+    password = 'Broxibear777'
+    login_twitter(driver, username, password)
+ 
+    # search twitter:
+    query = "stephen fry"
+    page_source = search_twitter(driver, query)
+ 
+    # extract info from the search results:
+    tweets = extract_tweets(page_source)
+     
+    # ==============================================
+    # add in any other functions here
+    # maybe some analysis functions
+    # maybe a function to write the info to file
+    # ==============================================
+ 
+    # close the driver:
+    close_driver(driver)
+    
