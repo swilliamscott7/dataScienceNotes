@@ -1,0 +1,44 @@
+!pip install pyautogui
+import pyautogui
+import pandas as pd
+
+# Pauses and fail-safes 
+pyautogui.PAUSE = 1
+#  the fail-safe feature will stop the program if you quickly move the mouse as far up and left as you can
+pyautogui.FAILSAFE = True
+
+# To get an idea of the monitor's screensize: 
+pyautogui.size()
+# current mouse x and y
+pyautogui.position()  
+# take a screenshot and store it: 
+im = pyautogui.screenshot()
+
+# Click at vector (100,100)
+pyautogui.click(100, 100)
+
+import pyautogui
+for i in range(10000):     
+      pyautogui.moveTo(100, 100, duration=0.25)  # the duration (in seconds) the movement should take
+      pyautogui.moveTo(200, 100, duration=0.25)
+      pyautogui.moveTo(200, 200, duration=0.25)
+      pyautogui.moveTo(100, 200, duration=0.25)
+
+      # to move it to a specific x,y coordinate: 
+#pyautogui.moveTo(x=100, y=100, duration=5)  
+
+# or to move it relative to the current position: 
+pyautogui.moveRel(xOffset=100, yOffset=100, duration=5)
+
+# pyautogui.typewrite() function sends virtual keypresses to the computer
+
+# Scroll function 
+pyautogui.scroll(-100)   # where 100 is the number of clicks to scroll
+pyautogui.scroll(10, x=100, y=100)  # move mouse cursor to 100, 200, then scroll up 10 "clicks"
+
+
+pyautogui.typewrite('Hello world!') # prints out "Hello world!" instantly
+
+pyautogui.press('enter')  # press the Enter key
+pyautogui.press('f1')     # press the F1 key
+pyautogui.press('left')   # press the left arrow key
