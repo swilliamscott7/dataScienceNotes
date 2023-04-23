@@ -1,6 +1,51 @@
+##### MAKE A CLASS TO CONTAIN ALL OF THIS #######
+### Use Tools like ColumnTransformer/FeatureUnion/DataFrameMapper etc. to make a pipeline that is more readable and less susceptible to leakage etc.##
+
 #### Use ColumnTransformer with Pipeline() where possible - handles new unseen data with different levels as well as ensure consistency in preprocessing train vs test sets
 # ColumnTransformer - allows you selectively apply data transforms to different types of columns e.g. categorical / numerical etc. 
 # https://stackoverflow.com/questions/54646709/sklearn-pipeline-get-feature-names-after-onehotencode-in-columntransformer
+
+#### Could even add the model to the pipeline #####
+
+pipe = Pipeline([
+    ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
+    ('encoder', OneHotEncoder(handle_unknown='ignore', sparse=False)), 
+    ('model', LinearRegression())
+])
+pipe.fit(X_train, y_train)
+y_train_pred = pipe.predict(X_train)
+y_test_pred = pipe.predict(X_test)
+
+
+#### or can apply to subset of cols ########
+
+
+# Define categorical pipeline
+cat_pipe = Pipeline([
+    ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
+    ('encoder', OneHotEncoder(handle_unknown='ignore', sparse=False))
+])
+
+# Define numerical pipeline
+num_pipe = Pipeline([
+    ('imputer', SimpleImputer(strategy='median')),
+    ('scaler', MinMaxScaler())
+])
+
+# Combine categorical and numerical pipelines
+preprocessor = ColumnTransformer([
+    ('cat', cat_pipe, categorical),
+    ('num', num_pipe, numerical)
+])
+
+# Fit a pipeline with transformers and an estimator to the training data
+pipe = Pipeline([
+    ('preprocessor', preprocessor),
+    ('model', LinearRegression())
+])
+pipe.fit(X_train, y_train)
+
+###########################################
 
 # Handling cyclical features such as time / months / wind direction - such that 24th hour is as close to 0th hour as it is 23rd hour
 # Map values onto a unit circle (i.e radius=1) so thast largest value adjacent to smallest value
@@ -8,3 +53,150 @@ df['hr_sin'] = np.sin(df.hr*(2.*np.pi/24)) # result is range[0,1]
 df['hr_cos'] = np.cos(df.hr*(2.*np.pi/24)) # result is range[0,1]
 df['mnth_sin'] = np.sin((df.mnth-1)*(2.*np.pi/12)) # shift values so months extend from 0 to 11 for convenience
 df['mnth_cos'] = np.cos((df.mnth-1)*(2.*np.pi/12))
+
+
+# Polynomial Transformation # 
+poly_scaler = Pipeline([
+ ("poly_features", PolynomialFeatures(degree=5, include_bias=False)),
+ ("std_scaler", StandardScaler())
+ ])
+X_train_poly_scaled = poly_scaler.fit_transform(X_train)
+X_val_poly_scaled = poly_scaler.transform(X_val)
+
+
+##### DataFrameMapper VS. ColumnTransfomer for preprocessing pipelines ########
+# https://github.com/scikit-learn-contrib/sklearn-pandas/issues/173#issuecomment-689606176 
+# allows you to keep annotations / column names etc. while ColumnTransformer reduces it to a numpy/array or matrix (However, ColumnTransformer is part of more stable ecosystem, so better if looking to keep code in prod for a while)
+
+from sklearn_pandas import DataFrameMapper 
+
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from category_encoders import LeaveOneOutEncoder
+
+imputer_Pclass = SimpleImputer(strategy='most_frequent', add_indicator=True)
+imputer_Age = SimpleImputer(strategy='median', add_indicator=True)
+imputer_SibSp = SimpleImputer(strategy='constant', fill_value=0, add_indicator=True)
+imputer_Parch = SimpleImputer(strategy='constant', fill_value=0, add_indicator=True)
+imputer_Fare = SimpleImputer(strategy='median', add_indicator=True)
+imputer_Embarked = SimpleImputer(strategy='most_frequent')
+
+scaler_Age = MinMaxScaler()
+scaler_Fare = StandardScaler()
+
+onehotencoder_Sex = OneHotEncoder(drop=['male'], handle_unknown='error')
+onehotencoder_Embarked = OneHotEncoder(handle_unknown='error')
+
+leaveoneout_encoder = LeaveOneOutEncoder(sigma=.1, random_state=2020)
+
+mapper = DataFrameMapper([
+    (['Age'], [imputer_Age, scaler_Age], {'alias':'Age_scaled'}),
+    (['Pclass'], [imputer_Pclass]),
+    (['SibSp'], [imputer_SibSp]),
+    (['Parch'], [imputer_Parch]),
+    (['Fare'], [imputer_Fare, scaler_Fare], {'alias': 'Fare_scaled'}),
+    (['Sex'], [onehotencoder_Sex], {'alias': 'is_female'}),
+    (['Embarked'], [imputer_Embarked, onehotencoder_Embarked]), 
+    (['Embarked_Pclass_Sex'], [leaveoneout_encoder])
+], df_out=True) # use df_out to output as a pandas DataFrame
+
+mapper.fit(X=train, y=train['Survived']) # you fit it like a sklearn ColumnTransformer
+
+
+# 1. Leave-One-Out Encoding - creates single column good for feature importance - assigns mean target for that level absent of the current row example
+# or try https://contrib.scikit-learn.org/category_encoders/leaveoneout.html 
+from category_encoders import LeaveOneOutEncoder 
+leaveout_encoder = LeaveOneOutEncoder(signma=0.1, random_state =  2020) # could then use this in a pipeline
+
+
+
+###### MORE CUSTOMISABLE PIPELINE 
+
+from sklearn.base import BaseEstimator, TransformerMixin
+
+class CombinedAttributesAdder(BaseEstimator, TransformerMixin): # setting BaseEstimator as base class instead of *args/**kwargs means have methods: set_params() and get_params() which allow for automatic hyperparamter tuning  
+    
+    def __init__(self, add_bedrooms_per_room = True): # no *args or **kargs
+        self.add_bedrooms_per_room = add_bedrooms_per_room
+    def fit(self, X, y=None):
+        return self # nothing else to do
+    def transform(self, X, y=None):
+        rooms_per_household = X.iloc[:, X.columns.get_loc('rooms')] / X.iloc[:, X.columns.get_loc('households')]
+        population_per_household = X[:,  X.columns.get_loc('pop')] / X[:, X.columns.get_loc('households')]
+        
+        if self.add_bedrooms_per_room:
+            bedrooms_per_room = X[:, X.columns.get_loc('bedrooms')] / X[:, X.columns.get_loc('rooms')]
+            return np.c_[X, rooms_per_household, population_per_household, bedrooms_per_room]
+        else:
+            return np.c_[X, rooms_per_household, population_per_household]
+
+attr_adder = CombinedAttributesAdder(add_bedrooms_per_room=False)
+housing_extra_attribs = attr_adder.transform(X.values)
+
+# Then use the pipeline constructor #
+num_pipeline = Pipeline([
+ ('imputer', SimpleImputer(strategy="median")),
+ ('attribs_adder', CombinedAttributesAdder()),
+ ('std_scaler', StandardScaler()),
+ ])
+housing_num_tr = num_pipeline.fit_transform(housing_num)
+
+
+
+### EXAMPLES OF USING PIPELINES #####
+
+def preprocessing(X_train, X_test, zero_imp_feats, mean_imp_feats, percentiles_dict):
+
+    """
+    
+    Expects train dataframe and test dataframe. Function ensures consistent preprocessing across both. 
+    Could add different strategy for tree-based vs linear approaches 
+    
+    """
+    
+    mean_transformer = Pipeline(steps=[('mean_imputer', SimpleImputer(missing_values=np.nan, strategy='mean') )])
+    zero_transformer = Pipeline(steps = [('zero_imputer', SimpleImputer(missing_values=np.nan, fill_value=0) )] )
+    percentile_transformer = Pipeline(steps=[('perc_imputer',PercentileImputer(percentiles_dict))] )
+    
+    percentile_feats = list(percentiles_dict.keys())
+    
+    preprocessor = ColumnTransformer(transformers=[('mean_cols', mean_transformer, mean_imp_feats),
+                                                   ('zero_cols', zero_transformer, zero_imp_feats),
+                                                   ('perc_cols', percentile_transformer, percentile_feats )], # extracts the feature list
+                                     remainder='passthrough') # means that any other columns remain unchanged 
+    p = Pipeline(steps=[('preprocessor', preprocessor)])
+    p.fit(X_train)
+    
+    transformed_cols = mean_imp_feats+zero_imp_feats+percentile_feats # needs to be in same order as pipeline 
+    non_transformed_cols = [i for i in X_train.columns if i not in transformed_cols] 
+    
+    original_col_order = X_train.columns.tolist()
+    
+    X_train = pd.DataFrame(p.transform(X_train), columns = transformed_cols+non_transformed_cols, index=X_train.index) # X_train.columns.tolist(), index=X_train.index)
+    X_test = pd.DataFrame(p.transform(X_test), columns = transformed_cols+non_transformed_cols, index=X_test.index) #X_test.columns.tolist()
+    
+    return X_train.loc[:,original_col_order], X_test.loc[:,original_col_order]
+
+
+# Custom Transformer that extracts columns passed as argument to its constructor 
+class PercentileImputer( BaseEstimator, TransformerMixin ):
+    
+    # Class Constructor : add optional parameters here 
+    def __init__( self, percentile_imputation_dict):
+        self.percentile_imputation_dict = percentile_imputation_dict 
+    
+    # Nothing needs changed here
+    def fit( self, X, y = None ):
+        return self 
+    
+    # Method that describes what we need this transformer to do
+    def transform( self, X, y = None ):
+        
+        for k,v in self.percentile_imputation_dict.items():
+            perc_imputer_value = np.nanpercentile(X[k], v)
+            X.loc[X[k].isna(),k] = perc_imputer_value
+        
+        return X
+
+
