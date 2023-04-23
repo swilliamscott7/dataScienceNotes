@@ -1,3 +1,7 @@
+#### Use ColumnTransformer with Pipeline() where possible - handles new unseen data with different levels as well as ensure consistency in preprocessing train vs test sets
+# ColumnTransformer - allows you selectively apply data transforms to different types of columns e.g. categorical / numerical etc. 
+# https://stackoverflow.com/questions/54646709/sklearn-pipeline-get-feature-names-after-onehotencode-in-columntransformer
+
 # Handling cyclical features such as time / months / wind direction - such that 24th hour is as close to 0th hour as it is 23rd hour
 # Map values onto a unit circle (i.e radius=1) so thast largest value adjacent to smallest value
 df['hr_sin'] = np.sin(df.hr*(2.*np.pi/24)) # result is range[0,1]
