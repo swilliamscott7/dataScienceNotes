@@ -177,6 +177,8 @@ CASE WHEN viewing_mts < 10 THEN '1-10'
 	 ELSE viewing_mts END AS binned_mts
 
 
+APPROX_QUANTILES(continuous_col, 100)[OFFSET(99)] continuous_col_99_percentile,
+
 ### DTYPES ####
 SELECT CAST('2018-01-01' AS DATE)
 SELECT CAST('01' AS FLOAT64)
