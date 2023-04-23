@@ -1,4 +1,12 @@
-#####
+##### Consider pyspark/spark/import multiprocessing/dask/threading....etc.
+
+# MULTIPROCESSING 
+import multiprocessing
+cores = multiprocessing.cpu_count()
+p = multiprocessing.Pool(cores)
+p = multiprocessing.Pool()
+results = p.map(continuous_didq_check, continuous_columns)   # does data integrity-data quality check (min,max,mean etc.) on all the continuous columns in your list
+
 
 ## DASK - allows you to scale your computations to run on a cluster of machines ## 
 import dask.dataframe as dd
