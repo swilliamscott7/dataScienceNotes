@@ -1,0 +1,72 @@
+
+### SHAP Example ###### 
+# https://github.com/slundberg/shap
+
+import shap
+shap_values = shap.TreeExplainer(model).shap_values(X_train)
+shap.summary_plot(shap_values, X_train, plot_type="bar")
+
+### Local Interpretability Plots ####
+# For explaining individual observations # 
+
+# Initialize your Jupyter notebook with initjs(), otherwise you will get an error message.
+shap.initjs()
+
+def shap_plot(model, df_subset, obs):
+    """
+    model : fitted model 
+    df_subset : sample of maybe 50 examples
+    obs : the index of the example e.g. 0 
+    """
+    explainerModel = shap.TreeExplainer(model)
+    shap_values_Model = explainerModel.shap_values(df_subset)
+    p = shap.force_plot(explainerModel.expected_value, shap_values_Model[obs], df_subset.iloc[[obs]])
+    return(p)
+	
+	
+import shap
+explainer = shap.TreeExplainer(final_model)
+shap_values = explainer.shap_values(X_test)
+df_shap = pd.DataFrame(data=shap_values, columns=X_test.columns, index=X_test.index) # produces a dataframe containing the impact attributed to each feature for each customer in our test set
+
+###### If want to know correlation between SHAP values and actual feature value ###### (nearest thing to correlation)
+
+def plot_SHAP_corrs(X_test, df_shap, format_dict=None, max_display=None):
+
+	""" 
+	Idea here is to look at the relationship between the impact of a feature on a customer's final prediction and their actual feature value 
+	
+	df_shap: is the SHAP dataframe having fitted our model to the test set, X_test
+	
+	"""
+    
+    # Get correlations and importances
+    corrs = X_test.corrwith(df_shap)
+    shap_importances = df_shap.abs().mean()
+    shap_importances.sort_values(ascending=False, inplace=True)
+    corrs = corrs.loc[shap_importances.index]
+    
+    # Configure plot inputs
+    if not max_display:
+        max_display = len(shap_importances)
+    corrs = corrs.iloc[:max_display]
+    labels = corrs.index
+    
+    if format_dict:
+        labels = [ format_dict.get(item,item) for item in labels ]
+    
+    # Plot
+    plt.figure(figsize=(12,len(shap_importances)*0.5))
+    sns.barplot(x=corrs, y=np.arange(len(corrs)), orient='h', color='crimson', edgecolor="black")
+    sns.despine(top=True, right=True)
+    plt.yticks(np.arange(len(corrs)), labels=labels, fontsize=12)
+    plt.xlabel('Directional correlation with impact on Downgrades', fontsize=14)
+    plt.title('Feature correlations with impact on Sports Downgrades', fontsize=18)
+    plt.savefig('outputs/shap_correlation_plot.jpg', dpi = 200, bbox_inches='tight')
+    
+    plt.show()
+
+with open('clean_feature_names.yaml', 'r') as file:
+    clean_names = yaml.load(file, Loader=yaml.FullLoader)
+	
+plot_SHAP_corrs(X_test, df_shap, format_dict = clean_names)
