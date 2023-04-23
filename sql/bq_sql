@@ -1,0 +1,31 @@
+DISK SPACE CHEAP - PROCESSING TIME EXPENSIVE 
+IN BQ = Data held in fewer, wider tables.More repetition (repeated columns across different tables to avoid joins). Data held as columns.Nested data, faster processing
+- We do not need primary index - in fact unique ID's are discouraged 
+- No Indexing!  We have partitions and clusters
+- You cannot alter, rename or delete fields in the table via SQL
+
+
+IN RELATIONAL DB = Data broken up into separate tables. One to Many relationships. Data held as rows. Little repetition, saves space 
+
+DML best avoided with BQ as not a relational DB - BETTER TO RECREATE TABLE FROM SCRATCH THAN ALTER OR INSERT
+regex functions much faster than like '%__%'
+avoid cross joins on huge datasets/cartesian products 
+denormalise data (wide tables i.e. counterintuitive to relational DBs)
+Add Partitions & Clusters - This will speed up searches of time based data
+Use Nested Structures- Use arrays and structs to nest more granular data 
+
+### SHARDING ## Stacks tables with a sequential suffix that can be used in a WHERE clause
+# SHARDING IS OKAY BUT PARTITIONING BETTER I.E. SINGLE TABLE PARTITIONED BY E.G. A DATE COLUMN
+SELECT  year
+       ,AVG(ROUND((max-32)*5/9,1)) AS Avg_celsius
+   FROM `bigquery-public-data.noaa_gsod.gsod*`
+  WHERE _TABLE_SUFFIX BETWEEN '1980'  AND '2010'
+
+
+## SCRIPTING COMMMANDS E.G #
+
+DECLARE var_name INT64;
+SET var_name = 50;
+
+### SAMPLING ###
+RAND() vs FARM_FINGERPRINT to achieve repeated random sampling 
