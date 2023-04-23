@@ -1,0 +1,6 @@
+# Handling cyclical features such as time / months / wind direction - such that 24th hour is as close to 0th hour as it is 23rd hour
+# Map values onto a unit circle (i.e radius=1) so thast largest value adjacent to smallest value
+df['hr_sin'] = np.sin(df.hr*(2.*np.pi/24)) # result is range[0,1]
+df['hr_cos'] = np.cos(df.hr*(2.*np.pi/24)) # result is range[0,1]
+df['mnth_sin'] = np.sin((df.mnth-1)*(2.*np.pi/12)) # shift values so months extend from 0 to 11 for convenience
+df['mnth_cos'] = np.cos((df.mnth-1)*(2.*np.pi/12))
