@@ -10,9 +10,14 @@ triu_mask = np.triu(np.ones_like(corr_df, dtype=bool))
 tri_df = corr_df.mask(triu_mask)   # sets half the values to Na values 
 sns.heatmap(tri_df, center=0, cmap= sns.diverging_palette(h_neg=10,h_pos=240,as_cmap=True), linewidths=1)
 
-
-X_subset_constant = sm.add_constant(X_subset)
-X_train, X_test, y_train, y_test = train_test_split(X_subset_constant, y, test_size = 0.01, random_state = 123)
-model = sm.Logit(y_train, X_train)
-cols = X_subset_constant.columns
-logistic_regression_performance(X_train, X_test, y_train, y_test, learner = model, cols = cols, threshold = 0.5, feature_importance = True)
+### STATSMODEL ###
+titanic_numeric = sm.add_constant(titanic_numeric) # for sm.logit, needs an intercept col
+X = titanic_numeric.drop(columns = ['Survived'])
+y = titanic_numeric['Survived']
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.05, random_state = 123)
+mod = sm.Logit(y_train, X_train).fit()   
+mod.summary() # inference - N.B. non-standardised coefficients so cannot compare like for like 
+train_probpreds = mod.predict(X_train)     # rf.mod(X_train)[:, 1] ??? difference??
+train_classpreds = (mod.predict(X_train) > 0.5).astype(int)
+test_probpreds = mod.predict(X_test)
+test_classpreds = (mod.predict(X_test) > 0.5).astype(int)
