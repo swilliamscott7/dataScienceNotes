@@ -1,0 +1,363 @@
+    def keras_nn():
+        
+        """
+
+        """
+        
+        # 
+        seed_value = 0
+        # os.environ['PYTHONHASHSEED']=str(seed_value) # do not understand the need for this 
+        np.random.seed(seed_value)
+        tf.random.set_seed(seed_value)
+
+        # Set initial random weights for keras layers - glorot_uniform is default for Dense(MLP)/LSTM/CNN 
+        my_init = keras.initializers.glorot_uniform(seed=seed_value)
+
+        # create NN architecture/topography using Keras Sequential API #
+        model = keras.models.Sequential([
+            keras.layers.Dense(50, input_dim=train.drop(['target'], axis=1).shape[1], activation="relu", kernel_initializer=my_init),
+            keras.layers.Dense(1,  activation="sigmoid", kernel_initializer=my_init)
+            ])
+
+        # 
+        es = EarlyStopping(monitor='val_loss', patience=3)
+        # Compile this into code that TensorFlow can efficiently execute
+        model.compile(loss="binary_crossentropy", optimizer=keras.optimizers.Adam(learning_rate=0.001), metrics=['accuracy', 'AUC'] )
+        # fit to data #
+        history = model.fit(train.drop(['target'], axis=1), train.target, \
+                    validation_data=(test.drop(['target'],axis=1), test.target), \
+                    epochs=50, batch_size=1000, callbacks=[es])
+        # use fitted model to predict 
+        y_pred  = model.predict( test.drop('target', axis=1).to_numpy() )
+        y_pred = y_pred[:,0]
+        y_test = test.target.values.astype(int)
+
+        epochs = history.epoch
+
+
+def sm_logit(X_train, y_train, X_test, y_test, alpha = 0.05, decis_threshold = 0.5, plot = True):
+
+    """
+    Using the statsmodel API, are able to identify whether coefficients are significant or not (unlike sklearn API)
+
+    """
+
+    # import statsmodels.api as sm
+    # from matplotlib.pyplot import figure 
+    # import seaborn as sns
+    
+    X_train = sm.add_constant(X_train) # for mod.params needs an intercept col
+    
+    # Modelling #
+    
+    # Could add in error handling to help deal with model not fitting - increase iterations or check preprocessing - no perfect multicollinearity / single value features etc. #
+    mod = sm.Logit(y_train, X_train).fit()
+    print(mod.summary2())
+    # inference - see BinaryResultsWrapper for properties of fitted model #
+    
+    # Create dataframe of results summary # 
+    coef_df = pd.concat([mod.params, mod.bse, mod.pvalues], axis = 1)
+    coef_df.reset_index(inplace=True) # make index into a column
+    coef_df.columns = ['feature','standardised_coefs', 'std error', 'p_values', ]
+    coef_df['sig'] = coef_df['p_values'] < alpha
+    aic = mod.aic # Akaike Information criterion
+    bic = mod.bic # Bayesian information criterion
+
+    # Plot of features by coefficient magnitude # 
+    if plot == True:
+        coefs_no_intercept = coef_df.copy().loc[coef_df['feature'] != 'const', ] # remove constant term 
+        coefs_no_intercept['abs_standardised_coefs'] = coefs_no_intercept['standardised_coefs'].abs()
+        coefs_no_intercept = coefs_no_intercept.sort_values('abs_standardised_coefs', ascending = False)
+        features = coefs_no_intercept.feature.tolist()
+        
+        # To enable colour coded bars #
+        conditions = [
+            (coefs_no_intercept['standardised_coefs'] < 0) & (coefs_no_intercept['sig'] == True), 
+            (coefs_no_intercept['standardised_coefs'] > 0) & (coefs_no_intercept['sig'] == True), 
+            (coefs_no_intercept['sig'] == False)
+        ]
+        color_palette = ['r','g','y']
+        coefs_no_intercept['colour'] = np.select(conditions, color_palette, default='b')
+        my_colours = coefs_no_intercept.colour.tolist() 
+        
+        # Plot # 
+        sns.set_theme(style="whitegrid")
+        ax = figure(figsize=(20,10))
+        ax = sns.barplot(x="abs_standardised_coefs", y="feature", data=coefs_no_intercept, palette=my_colours)
+        ax.set_title('Logistic Regression Coefficients')
+        ax.set_yticklabels(features)
+        ax.set_xlabel('Abs Standardised Coefficient Value')
+        ax.set_ylabel('Input Feature')
+        plt.savefig('logistic_coefficient_plot.png', bbox_inches='tight')
+    
+    # Identify multicollinearity #
+    
+    def pie_chart(coef_df, feature_col = 'feature', value_column = 'coef'):
+    """
+    Useful for key driver analysis when understanding contribution to metric 
+    
+    :coef_df - containing features and their corresponding standardised coefficients or their shap values
+    
+    """
+    coef_df['abs_value_column'] = coef_df[value_column].abs()
+    pie_df = pd.DataFrame({'feature':coef_df[feature_col], 'coef':coef_df.abs_value_column})
+    pie_df['prop'] = pie_df.coef / pie_df.coef.sum()
+    pie_df['recode'] = np.where(pie_df['prop'] < 0.03, 'other', pie_df['feature'])
+    
+    grouped_contributions = pie_df.groupby('recode')['coef'].sum()
+    sizes = grouped_contributions.values
+    labels = grouped_contributions.index.values
+    
+    fig1, ax1 = plt.subplots(figsize=(20,20))
+    patches, texts, autotexts = ax1.pie(sizes, colors = None, labels=labels, autopct='%1.1f%%', startangle=90)
+    for text in texts:
+        text.set_color('grey')
+    for autotext in autotexts:
+        autotext.set_color('grey')
+    # Equal aspect ratio ensures that pie is drawn as a circle
+    ax1.axis('equal')  
+    plt.tight_layout()
+    plt.show()
+    
+    # Model Performance # 
+
+#     train_probpreds = mod.predict(X_train)
+#     train_classpreds = (mod.predict(X_train) > decis_threshold).astype(int)
+#     test_probpreds = mod.predict(x_valid)
+#     test_classpreds = (mod.predict(x_valid) > decis_threshold).astype(int)
+    
+    return mod, coefs_no_intercept
+
+sm_model, coef_df = sm_logit(x_train, y_train, x_valid, y_valid, alpha = 0.05, decis_threshold = 0.5, plot = True)
+
+    def churn_conversion(churn_rate:FLOAT64, model_coefs:dict):
+    '''
+    Converts the standardised log odds coefficients into more meaningful churn percentage point (pp) benefits 
+    Should churn rate be standardised before calculating churn log odds? 
+    Also, should churn log odds form the bias term i.e. the y-intercept - if so, should the logit model be run without sm.add_constant???  
+    
+    Params: 
+    :churn_rate - Base rate of churn for period observed. If logistic model calculates coefficients over a full year, use annualised churn rate. If over a quarter, need quarterly churn rate       
+    :model_coefs - dictionary of features and their respective (standardised) coefficients
+                   
+    '''
+    # convert churn rate into log odds
+    churn_log_odds = np.log(churn_rate / (1 - churn_rate))
+    coef_dict = {'Feature': [], 'Churn PPT Benefit %': [] }
+    for key in model_coefs:
+        churn_coefficient = model_coefs[key]
+        # Take the exponent of the logs odds to get odds - then using algebra, rearrange to get prob = odds / (1 - odds) based on the fact that odds = p / (1 - p)
+        odds = np.exp(churn_coefficient + churn_log_odds) # take exponent to get odds
+        adjusted_churn = odds/ (1 + odds) # apply some algebra and get probability of churn after applying a one unit amount of coefficient
+        churn_benefit = churn_rate - adjusted_churn
+        coef_dict['Feature'].append(key)
+        coef_dict['Churn PPT Benefit %'].append(churn_benefit*100)
+    return pd.DataFrame(coef_dict)
+
+
+
+# Model Evaluation #
+
+    def predict_eval_model(X_test, y_test, fitted_model, quantiles = 10):
+        '''
+        
+        :X_test - series dtype as function will convert to array
+        :metrics - list of metrics including ['lift', 'accuracy', 'auc']
+        :quantiles - Used to calculate lift - determines uplift in top quantile of customers as arranged by propensity score
+        
+        '''
+        X_test = X_test.values
+        y_test = y_test.values.ravel() # ensures it is 1D
+        y_preds = model.predict(X_test)
+        y_probs = model.predict_proba(X_test)[:, 1] 
+        # For determining decision boundary - not for evaluating model performance
+        confusionMatrix = pd.crosstab(y_preds, y_test, rownames = ['Class Predictions'], colnames = ['Actual'], margins = False)
+        # For evaluating model performance #
+        # Lift #
+        randomly_distributed_conv = (y_test.sum()) / quantiles
+        df_lift = pd.DataFrame({'probs':y_probs, 'actual':y_test})
+        df_lift = df_lift.sort_values(by = 'probs', ascending = False)
+        df_lift_top_quantile = df_lift.iloc[0:round(len(df_lift)/quantiles),]
+        lift = (df_lift_top_quantile['actual'].sum()) / randomly_distributed_conv
+        # Other results summarised # 
+        results = pd.DataFrame({'auc': roc_auc_score(y_test, y_probs), 'accuracy':model.score(X_test, y_test), 'lift':lift, 'n_ranked_features':X_test.shape[1]}, index=range(1,2))
+        return results
+
+
+#### CATBOOST ALGORITHM #######
+
+!pip install catboost
+from catboost import CatBoostClassifier # CatBoostRegressor 
+cb_mod = CatBoostClassifier(n_estimators = 100, max_depth = 8, learning_rate = 0.1, eval_metric = 'AUC', objective = 'Logloss')
+cb_mod.fit(X_train, y_train)
+# OR can monitor learning process as it trains - inspect AUC / logloss etc. Can use to spot overfitting 
+cb_mod.fit(X_train, y_train, plot = True, eval_set=(X_test, y_test), early_stopping_rounds = 10, verbose = 50) # lets you see error at every 50th iteration 
+# to export for use in production #
+cb_mod.save_model('model-catboost.py', format = 'python', pool=X_train)
+# to reupload model for predictions
+from catboost import CatBoost
+model = CatBoost()
+model.load_model('model-catboost.py', format = 'cbm')
+
+# method 2 # 
+categorical_names = ['dtv_product_holding', 'family_lifestage']
+categoricals = [data.columns.get_loc(i) for i in categorical_names]
+estimator = CatBoostClassifier( loss_function= 'Logloss', custom_metric=['AUC'], eval_metric='AUC', random_seed=42)
+start = time()
+estimator.fit(Xtrain, ytrain,cat_features = categoricals,eval_set=(Xtest, ytest),verbose=50,plot=True)
+estimator_elapse = time() - start
+print('elapse:, ', estimator_elapse)
+print(); print(estimator)
+# make predictions
+expectedy  = ytest
+predictedy = estimator.predict(Xtest)
+# summarize the fit of the model
+print(); print(metrics.classification_report(expectedy, predictedy))
+print(); print(metrics.confusion_matrix(expectedy, predictedy))
+# feature importance 
+featimp = pd.Series(estimator.feature_importances_, index=X_train.columns)
+featimp.nlargest(25).plot(kind='barh', figsize=(8,6))
+plt.title('Feature Importance Catboost')
+plt.show()
+
+
+
+#### Decision Tree #####
+
+df_clf = DecisionTreeRegressor(max_depth=5)
+df_clf.fit(X.drop(columns=['dg_risk','dg_decile']), X['dg_risk'])
+dot_data = tree.export_graphviz(df_clf, out_file=None, 
+                                feature_names=X_train_rfe.columns.tolist(),  
+                                filled=True)
+graph = graphviz.Source(dot_data, format="png") 
+graph
+
+graph.render(filename='decision_tree_output') # save to png file 
+
+# Or to visualise a tree use: 
+
+from sklearn.tree import export_graphviz
+export_graphviz(dt_clf, out_file=image_path("iris_tree.dot"), feature_names=iris.columns.tolist() class_names=iris['target'].unique().tolist(), rounded=True, filled=True )
+# Can then convert .dot file into a variety of formats be it PDF/PNG etc.
+$ dot -Tpng iris_tree.dot -o iris_tree.png
+
+
+
+### Early Stopping Implementation : relies on warm_start = True 
+
+from sklearn.base import clone
+# prepare the data
+poly_scaler = Pipeline([
+ ("poly_features", PolynomialFeatures(degree=90, include_bias=False)),
+ ("std_scaler", StandardScaler())
+ ])
+X_train_poly_scaled = poly_scaler.fit_transform(X_train)
+X_val_poly_scaled = poly_scaler.transform(X_val)
+sgd_reg = SGDRegressor(max_iter=1, tol=-np.infty, warm_start=True,
+ penalty=None, learning_rate="constant", eta0=0.0005)
+
+
+minimum_val_error = float("inf")
+best_epoch = None
+best_model = None
+for epoch in range(1000):
+    sgd_reg.fit(X_train_poly_scaled, y_train) # fit() method will continue where it left off due to warm_start=True - rather than restarting from scratch 
+    y_val_predict = sgd_reg.predict(X_val_poly_scaled)
+    val_error = mean_squared_error(y_val, y_val_predict)
+    if val_error < minimum_val_error:
+    minimum_val_error = val_error
+    best_epoch = epoch
+    best_model = clone(sgd_reg) # will copy the parameters of the model at the time, but not the attached data
+
+
+
+############ ENSEMBLING ####
+
+# Hard or soft voting classifier - based on different algorithmic base learners #
+from sklearn.ensemble import VotingClassifier
+log_clf = LogisticRegression()
+rnd_clf = RandomForestClassifier()
+svm_clf = SVC()
+voting_clf = VotingClassifier(
+ estimators=[('lr', log_clf), ('rf', rnd_clf), ('svc', svm_clf)],
+ voting='hard')  #  can equally set to hard but would need to ensure SVC() is set to probabilistic outcome 
+voting_clf.fit(X_train, y_train)
+
+### Bagging Classifier ###
+
+from sklearn.ensemble import BaggingClassifier
+from sklearn.tree import DecisionTreeClassifier
+# Ensemble of 500 decision trees, each trained on 100 instances which are sampled from our dataset with replacement (if wanted pasting set bootstrap=False)
+bag_clf = BaggingClassifier(DecisionTreeClassifier(), n_estimators=500, max_samples=100, bootstrap=True, n_jobs=-1) # automatically uses soft-voting if base learners have probabilistic prediction 
+bag_clf.fit(X_train, y_train)
+y_pred = bag_clf.predict(X_test)
+
+# If want to evaluate on OOB rather than separate test set #
+bag_clf = BaggingClassifier(DecisionTreeClassifier(), n_estimators=500, max_samples=100, bootstrap=True, n_jobs=-1, 
+                  oob_score=True
+                  )
+bag_clf.fit(X_train, y_train)
+bag_clf.oob_score_
+
+# If want average OOB for each instance, rather than avg OOB across all instances
+bag_clf.oob_decision_function_
+
+
+
+
+############ GBT - Gradient Boosted Trees ############
+
+#### DECIDING ON OPTIMAL NUMBER OF TREES THAT MINIMISES ERROR ####
+gbrt = GradientBoostingRegressor(max_depth=2, n_estimators=120)
+gbrt.fit(X_train, y_train)
+# staged_predict() gives you the error at each predictor (i.e at each stage in training in the ensemble) - measures test error at each stage 
+errors = [mean_squared_error(y_test, y_pred) for y_pred in gbrt.staged_predict(X_test)]
+# Want the optimal number of predictors i.e. the number that minimises test error 
+bst_n_estimators = np.argmin(errors)
+# Train again now using optimal number of trees 
+gbrt_best = GradientBoostingRegressor(max_depth=2,n_estimators=bst_n_estimators)
+gbrt_best.fit(X_train, y_train)
+
+##### OR USE WARM START TO ENABLE EARLY STOPPING I.E. ONLY TRAIN AS MANY TREES AS IS NEEDED (+HOWEVER MANY ITERATIONS OF NO ERROR IMPROVEMENT ) 
+
+gbrt = GradientBoostingRegressor(max_depth=2, warm_start=True) # warm_start means sklearn keeps existing tree, allowing for incremental training 
+min_val_error = float("inf")
+error_going_up = 0
+for n_estimators in range(1, 120):
+    gbrt.n_estimators = n_estimators
+    gbrt.fit(X_train, y_train)
+    y_pred = gbrt.predict(X_tes)
+    val_error = mean_squared_error(y_val, y_pred)
+    if val_error < min_val_error:
+        min_val_error = val_error
+        error_going_up = 0
+    else:
+        error_going_up += 1
+        if error_going_up == 5: ## i.e. if error increases for 5 consecutive iterations then stop training and use that many trees
+            break # early stopping
+
+
+#### MULTI-CLASS FOR NOMINAL PROBLEMS E.G. GOLD/SILVER/BRONZE LABELS  -- issue with multicass using sklearn and sm.MNLogit is that both return K sets of coefficients to represent K classes --> (essentially rusn K-1 independent
+# binary logistic regression models) - all are regressed against the reference class - makes intepretation hard
+
+model_3tier = LogisticRegression(multi_class='multinomial', solver='lbfgs')
+model_3tier.fit(X_train.values, y_train.replace({4:3}))
+probs = model_3tier.predict_proba(X_test.values)
+test_results_3tier = pd.DataFrame({'show':X_test.index,'label':model_3tier.predict(X_test)}) 
+
+coefficient_3tier_dict = dict(zip(model_3tier.classes_, model_3tier.coef_))
+tiers = ['Bronze', 'Silver', 'Gold']
+fig, ax = plt.subplots(1,len(tiers),figsize=(28,6))
+# fig.tight_layout()
+for i in np.arange(0,len(tiers)):
+    coef_df = pd.DataFrame({'feature':X_train.columns.tolist(),'standardised_coefs':coefficient_3tier_dict[float(i+1)]}) 
+    _ = sns.barplot(x="standardised_coefs", y="feature", data=coef_df, ax = ax[i] )
+    _.set_title('{0}'.format(tiers[i]), fontsize=20)
+plt.tight_layout()
+plt.show()
+
+### or use sm.Logit
+X_train_intercept = sm.add_constant(X_train)
+mod = sm.MNLogit(y_train.replace({4:3}), X_train_intercept.iloc[:,0:3]).fit()
+mod.summary2()
+
