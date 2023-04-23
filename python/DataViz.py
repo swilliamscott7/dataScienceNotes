@@ -167,3 +167,61 @@ fig.savefig('filename.png', bbox_inches = 'tight')
 
 
 sns.pairplot(df, hue = 'target_variable', diag_kind = 'hist') # good for visualising smaller dim datasets 
+
+
+#### For loop using seaborn to plot boxplots on scale ######
+
+metrics = ['trend_score','trend_score_thresh', 'idx_trend_score', 'idx_trend_score_thresh','trend_sum_score', 'trend_sum_score_thresh', 'top_5_seen',
+           'top_10_seen', 'idx_5rank', 'idx_10rank']
+
+fig, ax = plt.subplots(5,2, figsize=(40,40), squeeze = False) # allows you to provide a single integer reference rather than x,y input
+axli = ax.flatten() 
+for i,v in enumerate(metrics):
+    sns.boxplot(ax = axli[i], x="Target", y=v, data=df_1)
+    axli[i].set_xlabel('Target')
+    axli[i].set_ylabel(v)
+plt.show()
+
+
+#### For loop using seaborn to make histogram on scale #####
+
+# Plot together 
+n_metrics = len(metrics)
+fig2, ax2 = plt.subplots(5,2, figsize=(30,30))
+axli = ax2.flatten() 
+for i,v in enumerate(metrics):
+    sns.histplot(df_1.loc[df_1['Target']==1, v], label='DG', bins=30, color = 'red', alpha=0.5, ax = axli[i])
+    sns.histplot(df_1.loc[df_1['Target']==0,v], label='Non-DG', bins=30, color = 'orange', alpha=0.5, ax = axli[i] )
+    axli[i].set_title('Downgraders')
+    axli[i].set_title('Non-downgraders')
+    axli[i].legend(loc='upper right')
+plt.show()
+
+
+plt.savefig('plot_name.png', bbox_inches='tight') # N.B. plt.savefig() must be called before plt.show() otherwise png file will be blank 
+
+
+
+# Multiple plots 
+fig, axs = plt.subplots(2, 2)
+axs[0, 0].plot(x, y)
+axs[0, 0].set_title('Axis [0,0]')
+axs[0, 1].plot(x, y, 'tab:orange')
+axs[0, 1].set_title('Axis [0,1]')
+axs[1, 0].plot(x, -y, 'tab:green')
+axs[1, 0].set_title('Axis [1,0]')
+axs[1, 1].plot(x, -y, 'tab:red')
+axs[1, 1].set_title('Axis [1,1]')
+# example2
+fig, (ax1, ax2) = plt.subplots(2)
+fig.suptitle('fhfffk')
+ax1.plot(x,y)
+
+# SMOOTH HISTOGRAMS ####
+sns.kdeplot()
+
+
+# CONDITIONAL FORMATTING / HEATMAP PANDAS DF : https://towardsdatascience.com/style-pandas-dataframe-like-a-master-6b02bf6468b0 
+df.style.background_gradient(cmap='Blues') # believe this does columnwise conditional formatting
+
+######################################################
