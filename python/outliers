@@ -1,0 +1,97 @@
+
+# # Iterate through each grid search parameter combination - find the one that maximises AUC #
+for i in list(ParameterGrid(param_grid)):
+    # Step 1 - Fit isolation model to X_train using setup i
+    iso_forest = IsolationForest(**i)
+    iso_forest.fit(X_train)
+    # Step 2 - Predict which observations to remove from X_train based on this model setup, and remove these
+    anomaly_identifier = iso_forest.predict(X_train)
+    ifo_mask = (anomaly_identifier == -1) # boolean mask, where True indicates it is an anomaly   
+    X_train_iso = X_train.copy().loc[ifo_mask,]
+    y_train_iso = y_train.copy().loc[ifo_mask,]
+    # Step 3 - Cross val score based on training our model on the remaining "normal" data (AUC)
+    lg = lgbm.LGBMClassifier(**lgbm_params)
+    cv_score = cross_val_score(lg, X_train_iso, y_train_iso, cv=5,scoring='roc_auc',)
+    print(cv_score)
+    print(cv_score.mean())
+    print(cv_score.std())
+    
+config.append(i)
+outliers.append(sum(ifo_mask))
+cv_scores.append(cv_score)
+mean_cv_score.append(cv_score.mean())
+std_cv_score.append(cv_score.std())
+
+iso_forest_results = pd.DataFrame({'hyperparameters':config,
+                                   'outliers':outliers,
+                                   'cv_scores':cv_scores,
+                                   'mean_cv_score':mean_cv_score,
+                                   'std_cv_score':std_cv_score})
+iso_forest_results.sort_values(by='mean_cv_score',ascending=False)
+
+# # optimum_hyperparams_iso = iso_forest_results.loc[np.argmax(iso_forest_results['mean_cv_score']),'hyperparameters']
+# optimum_hyperparams_iso = {'bootstrap': True, 'max_features': 0.9, 'max_samples': 0.7, 'n_estimators': 800, 'n_jobs': -1, 'random_state': 123}
+# chosen_hyperparams_iso = {'bootstrap': True, 'max_features': 0.9, 'max_samples': 0.9, 'n_estimators': 800, 'n_jobs': -1, 'random_state': 123} # chose this one as although it didnt have highest AUC, had high AUC and low StDev
+
+iso_forest = IsolationForest(**chosen_hyperparams_iso)
+iso_forest.fit(X_train)
+# Step 2 - Predict which observations to remove from X_train and remove these
+anomaly_identifier = iso_forest.predict(X_train)
+ifo_mask = (anomaly_identifier == -1)
+print('Outliers removed in train set: {} - represents {:.1f}% of train data'.format(sum(ifo_mask), 100*sum(ifo_mask)/len(X_train)  ))
+X_train_iso = X_train.copy().loc[~ifo_mask,]
+y_train_iso = y_train.copy().loc[~ifo_mask,]
+# Step 3 - Predict which observations to remove from X_test and remove these
+anomaly_identifier_test = iso_forest.predict(X_test)
+ifo_mask_test = (anomaly_identifier_test == -1)
+print('Outliers removed in test set: {} - represents {:.1f}% of test data'.format(sum(ifo_mask_test), 100*sum(ifo_mask_test)/len(X_test)  ))
+X_test_iso = X_test.copy().loc[~ifo_mask_test,]
+y_test_iso = y_test.copy().loc[~ifo_mask_test,]
+# Step 4 - Fit model to "normal" train set data
+lg = lgbm.LGBMClassifier(**lgbm_params)
+lg.fit(X_train_iso, y_train_iso)
+# Step 5 - Evaluate model on "normal" test set data
+y_test_probs = lg.predict_proba(X_test_iso)[:,1]
+y_test_preds = lg.predict(X_test_iso)
+print(accuracy_score(y_test_iso, y_test_preds))
+print(roc_auc_score(y_test_iso.values, y_test_probs))
+# Step 6 - Evaluate model on "outlier" validation set data
+y_anomalies_probs = lg.predict_proba(X_test.copy().loc[ifo_mask_test,])[:,1]
+print(roc_auc_score(y_test.copy().loc[ifo_mask_test,].values, y_anomalies_probs))
+
+## Preprocessing of anomaly dataset ## 
+if outlier_removal:
+    y_anomalies = anomalies_dataset[target]
+    anomalies_dataset.drop(columns=target, inplace=True)
+    
+    # Handle missing values # 
+    for col in missing_val_fields:
+        anomalies_dataset[col] = np.where(anomalies_dataset[col].isna(), -99999.0, anomalies_dataset[col])
+    for col in null_fields_to_consider:
+        mode_value = input_dataset[col].mode()[0]
+        anomalies_dataset[col] = anomalies_dataset[col].fillna(mode_value)
+    
+    # Outlier Treatment
+    if outlier_treatment:
+        anomalies_dataset = outlier_treatment(anomalies_dataset)
+    
+    # Feature Transform 
+    anomalies_dataset = feature_transform(anomalies_dataset)
+    
+    # Drop columns with no frequency and fill in missing values
+    dpp = DataPreProcess(anomalies_dataset, show_plots=1, missing_value_default=missing_value_default)
+    df_num_anomalies, df_obj_anomalies, _ , _ = dpp.fill_missing(transform_date=False)
+    
+    df_obj_anomalies_subset = df_obj_anomalies.copy().loc[:,df_obj.columns.tolist()] # as some dropped
+    # OHE Features #
+    anomalies_dummies = ohe.transform(df_obj_anomalies_subset).toarray()
+    df_anom_dummies = pd.DataFrame(data = anomalies_dummies,columns = ohe.get_feature_names_out().tolist(), index=anomalies_dataset.index)
+    
+    # Combine different feature sets into master table
+    X_anomalies = pd.concat([df_num_anomalies,df_anom_dummies], axis=1)
+    
+    # Remove Features that do not exist in the train-test set
+    
+    X_anomalies = X_anomalies.copy().loc[:,[i for i in X_anomalies.columns if i in X_train.columns]]
+
+# THEN CHECK PERFORMANCE OF ANOMALY DATASET VS INLIER DATASET 
