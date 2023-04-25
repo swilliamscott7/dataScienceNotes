@@ -1,0 +1,37 @@
+Tweedie distribution
+	- Alternative to separately modelling distribution of an event happening + distribution of offers required
+		○ does both steps in one
+	- Check what it outputs? Outputs proba offer acceptance + offer_amt????
+	- A zero-inflated (ZI) GLM model
+  - Best for when want a high level idea of the pooled amount you need i.e. for serving finance/budget/forecasting teams. Less for customer level recommendations.
+    - But where preference for highly personalised recs, serparate models might be better. As can fit models better, better evaluate them and SHAP more intuitive
+    - Also predicts £0 if thinkgs wont call which isnt helpful if they do.
+    - 99% of samples have 0 value so MSE/RMSE etc. make little sense to interpret and doesnt allow model to learn complex interactions from minority class. Too likely to just fit majority 0 samples or even predict all as 0
+	- Use cases e.g. Insurance
+			- Probability of a claim
+      - Value of that claim
+      - OR Sales forecasting (frequency of sales + volume of sales for each sale)
+
+
+		- N = frequency (no. of claims/calls made ) --> Follows a Poisson distribution (i.e. poisson random variable)
+		- Z = severity (claim amount / offer amt etc. )--> Often have a heavy right tail, so say it follows Gamma distribution (gamma random variable)
+		- Tweedie distribution has two parameters including a Tweedie variance power parameter, p 
+				□ If p = 0, follows normal distribution
+				□ If p = 1, strictly poisson
+				□ If p between 1-2, compound poisson
+				□ If p = 2, gamma
+				□ Determines how much to penalise the model if y_pred != y_true
+
+Why use it?
+	- Where probability mass is at 0 and there is a nonnegative, highly right-skewed distribution
+	- Positively skewed distribution with many not making a claim (with car insurance) i.e. not calling to ask for an offer. A zero inflated distribution.
+Thus, loss functions do not fare well that are otherwise normally used for gaussian distributions 
+
+How to implement?
+	a) sklearn TweedieRegressor
+	b) LGBM and XGB directly support it via the loss/objective function 
+    - xgb_reg = xgb.XGBRegressor(objective ='reg:tweedie', tweedie_variance_power=1.5, max_depth = 5,….). Tune  tweedie_variance_power using cross validation
+
+Idea
+	- Could produce a tweedie model and a freq*severity dual model approach and evaluate which is better
+See https://scikit-learn.org/stable/auto_examples/linear_model/plot_tweedie_regression_insurance_claims.html
