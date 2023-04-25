@@ -1,3 +1,147 @@
+# Everything in python is an object, names are just identifiers which are bound to an object
+# below : observe that both second and first can be used to refer to the same object
+def first(msg):
+    print(msg)
+first("Hello")
+second = first
+second("Hello")
+
+# Higher order functions - functions that take other functions as arguments #
+def inc(x):
+    return x + 1
+def dec(x):
+    return x - 1
+# higher order function takes either dec() or inc() when invoked
+def operate(func, x):
+    result = func(x)
+    return result
+operate(inc,3)
+operate(dec,3)
+
+# A function can return another function - below is aan example of a nested function # 
+def is_called():
+    def is_returned():
+        print("Hello")
+    return is_returned
+new = is_called()
+new()
+
+##### CONSTRUCTORS #######
+# Used for instantiating an object - the task of the contructor is to intiialise (assign values) to the members of the class when an 
+# object/instance is created E.G. __init__() method is a constructor
+
+class Dog:
+    #default constructor
+    def __init__(self, breed):
+        self.tail = 'Yes'
+        self.breed = breed
+
+###### CLOSURES - these are nonlocal variables in a nested function; occur when a nested function references a value in its
+# enclosing scope  #####
+
+# Closures = Process by which some data gets attached to the code # 
+# The value in the enclsoing scope is remembered even when the variable goes out of scope of the function itself is removed from
+# the current namespace 
+
+# Criteria for creating a closure: 
+# Nested function + nested function must refer to a value defined in the enclosing function + enclosing function returns nested function
+
+# Nested function below highlights how non-local variable 'msg' can be accessed by printer() 
+def print_msg(msg):
+    # This is the outer enclosing function
+    def printer():
+        # This is the nested function whcih is able to access the non-local 'msg' variable of the enclosing function
+        print(msg)
+    printer()
+print_msg("Hello")
+
+def print_msg(msg):
+    # This is the outer enclosing function
+    def printer():
+        # This is the nested function
+        print(msg)
+    return printer  # returns the nested function
+another = print_msg("Hello")
+another() # it's unusual that 'Hello' is still remembered here despite already being executed by the print_msg() function
+
+# This value in the enclosing scope is 
+# remembered even when the variable goes out of scope or the function itself is removed from the current namespace.
+del(print_msg)
+another() # still remembered 
+
+# USE CASES FOR CLOSURES ####
+# In place of global variables and to provide some form of data hiding
+# Can also provide an object oriented solution 
+# If a class were to have few methods (mostly when just one), often closure provides alternate, more elegant solution ;
+# But when number of attributes & methods get larger, it's better to implement a class 
+
+#EXAMPLE USE CASE
+def make_multiplier_of(n):
+    def multiplier(x):
+        return x * n
+    return multiplier
+times3 = make_multiplier_of(3)
+times5 = make_multiplier_of(5)
+print(times3(9))
+print(times5(3))
+print(times5(times3(2)))
+
+# To identify a closure, function will have __closure__ attribute 
+make_multiplier_of.__closure__ # returns nothing 
+times3.__closure__ # returns tuple therefore is closure function 
+times3.__closure__[0].cell_contents # shows the stored closed value
+
+
+#### DECORATORS #####
+# Basically, a decorator takes in a function, adds some functionality and returns it
+# Is called metaprogramming because apart of the program tries to modify another part of the program at compile time
+
+# The most common Python decorators you'll run into are:
+@property
+@classmethod # receives the class as an implicit first argument, just like an instance method receives the instance
+@staticmethod # does not receive an implicit first argument (class)-a method which is bound to the class, and not the object of the class 
+
+# Python program to demonstrate use of class method and static method #
+from datetime import date 
+class Person: 
+    def __init__(self, name, age): 
+        self.name = name 
+        self.age = age 
+       
+    # a class method to create a Person object by birth year. 
+    @classmethod
+    def fromBirthYear(cls, name, year):     # a method that is bound to the class and not the object of the class. Can access/modify class state
+        return cls(name, date.today().year - year) 
+       
+    @staticmethod # cannot access or modify class state. It is present in class, becuase it makes sense for the method to be present in class
+    def isAdult(age): 
+        return age > 18
+   
+person1 = Person('mayank', 21) 
+person2 = Person.fromBirthYear('mayank', 1996) 
+   
+print (person1.age) 
+print (person2.age) 
+print (Person.isAdult(22))
+# use cases : @staticmethod vs @classmethod - use class to create factory methods (i.e. return class object) vs static to create utility functions
+
+# Python decorators make extensive use of closures 
+# Functions & Methods are called 'callable' because they can be called (will have attribute .__call__ 
+# In fact anything which implements __call__() is termed callable 
+# In the most basic sense, a decorator is a callable that returns a callable 
+
+# Example of a decorator # 
+def make_pretty(func):
+    def inner():
+        print("I got decorated")
+        func()
+    return inner
+def ordinary():
+    print("I am ordinary")
+    
+    
+    
+############################################################################
 $ pip list --format=freeze > requirements.txt ## to get all packages with version type - issue with $ pip feeze > requirements.txt is that will have @ packages
 
 # nbconvert converts your notebook document file to another static format, such as HTML, PDF, LaTex, Markdown, reStructuredText (rather than defacto JSON format)
