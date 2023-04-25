@@ -1,0 +1,141 @@
+# !pip install lifelines
+import lifelines
+
+
+# fitting kmf to churn data
+churn_hazard = pd.concat([X_train_rfe, y_train], axis=1)
+t = churn_hazard['sports_tenure'].values
+churn = churn_hazard.target.values
+kmf = lifelines.KaplanMeierFitter()
+kmf.fit(t, event_observed=churn, label='Estimate for Average Customer')
+# plotting kmf curve
+fig, ax = plt.subplots(figsize=(10,7))
+kmf.plot(ax=ax)
+ax.set_title('Kaplan-Meier Survival Curve — All Customers')
+ax.set_xlabel('Customer Tenure (Months)')
+ax.set_ylabel('Customer Survival Chance (%)')
+plt.show()
+
+# To predict the probability of survival at time, t
+kmf.predict(800) # Probability of survival after 800 days Sports Tenure is 92%
+
+
+####### For categorical KM Curves i.e. where want to plot multiple curves and compare cohorts e.g. sex / has MS vs doesn't
+
+def plot_categorical_survival(df, feature, t='tenure', event='Churn', ax=None):
+    for cat in df[feature].unique():
+        idx = df[feature] == cat
+        kmf = lifelines.KaplanMeierFitter()
+        kmf.fit(df[idx][t], event_observed=df[idx][event], label=cat)
+        kmf.plot(ax=ax, label=cat)
+
+fig_pmt, ax_pmt = plt.subplots(figsize=(12,7))
+plot_categorical_survival(df=churn_hazard, feature='MS_Active', t='sports_tenure', event='target', ax=ax_pmt)
+ax_pmt.set_title('Customer Churn by MS Active Product Holding')
+ax_pmt.set_xlabel('Customer Sports Tenure (Days)')
+ax_pmt.set_ylabel('Customer Survival Chance (%)')
+plt.show()
+
+
+
+
+######## Survival Regresion Models #####
+
+# Cox Regression Model (most common)
+
+cph = lifelines.CoxPHFitter()
+cph.fit(churn_hazard, duration_col='sports_tenure', event_col='target', step_size = 0.5, show_progress=True) # churn_hazard is the dataframe of features
+# n.b set step_size as this because would not converge
+cph.print_summary()
+
+# Aalen Additive (rarely used alternative, potentially use if above does not converge)
+model = lifelines.AalenAdditiveFitter()
+model.fit(churn_hazard, duration_col='sports_tenure', event_col='target', show_progress=False)
+model.print_summary()
+
+
+
+######### Logrank test ####################
+
+from lifelines.statistics import logrank_test
+
+ms_active = churn_hazard.loc[churn_hazard['MS_Active']==1,]
+ms_nonactive = churn_hazard.loc[churn_hazard['MS_Active']==0,]
+
+
+results = logrank_test(ms_active['sports_tenure'], ms_nonactive['sports_tenure'], event_observed_A=ms_active['target'], event_observed_B=ms_nonactive['target'])
+
+results.print_summary()
+print(results.p_value)
+print(results.test_statistic)
+
+
+####### 
+
+# Experimenation
+
+# Measuring MS Active Impact on Individuals
+# - What is the impact of artificially changing the data for non-MS accounts?
+
+
+###### ATTEMPT 1 : Issue is that individuals can eb estimated with infinite values #
+# Predict individual tenures for our training set # 
+predicted_tenure = cph.predict_median(churn_hazard)
+
+# Create a perturbed version of the training set by setting all MS_Active values to 1 # 
+churn_hazard_fake = churn_hazard.copy()
+churn_hazard_fake['MS_Active'] = 1
+predicted_fake_tenure = cph.predict_median(churn_hazard_fake)
+
+# Which accounts have changed product holding status? #  
+non_ms_accts = churn_hazard.loc[churn_hazard['MS_Active']==0, ].index.tolist()
+
+# For these accounts, what was the impact on estimated survival of this product holding change? # 
+pred_tenure_fake = predicted_fake_tenure.loc[non_ms_accts]
+pred_tenure_fake = np.where(pred_tenure_fake == np.inf, 10000, pred_tenure_fake)
+
+pred_tenure = predicted_tenure.loc[non_ms_accts]
+pred_tenure = np.where(pred_tenure == np.inf, 10000, pred_tenure)
+
+# Mean change
+(pred_tenure_fake - pred_tenure ).mean()
+
+
+###### ATTEMPT 2 ###########
+# __For all customers that downgraded, what would their survival probabilities have been after 4 years of Sports Tenure if had MS_Active__
+# - Instead, this approach uses a specific time at which to estimate probability of downgrading
+# - Overcomes the aforementioned issue of inf
+dgers_wo_ms = churn_hazard.loc[churn_hazard['MS_Active']==0, ][:19]
+# Dupicate this dataframe with the exception of making all of their MS_Active equal 1 # 
+dgers_with_ms = dgers_wo_ms.copy()
+dgers_with_ms['MS_Active'] = 1
+
+unconditioned_sf = cph.predict_survival_function(dgers_wo_ms).loc[365*4] # this function produces a survivival function for each individual at each time period i.e. usign a single column could plot a KM curve 
+unconditioned_sf_fake = cph.predict_survival_function(dgers_with_ms).loc[365*4]
+
+# Consider proabilities at the 4 year mark and compare having imputed MS_Active #
+(unconditioned_sf_fake - unconditioned_sf).mean()
+
+
+
+#### RANDOM SURVIVAL FOREST : https://scikit-survival.readthedocs.io/en/stable/user_guide/random-survival-forest.html
+
+from sksurv.ensemble import RandomSurvivalForest
+estimator = RandomSurvivalForest().fit(X, y)
+estimator.score(X_test, y_test) # gives OOS eval metric - concordance index (higher = better)
+estimator.predict_cumulative_hazard_function(X.iloc[:5])
+
+# Plot the estimated cumulative hazard functions:
+for fn in chf_funcs:
+   plt.step(fn.x, fn(fn.x), where="post")
+
+plt.ylim(0, 1)
+plt.show()
+
+# Importance 
+import eli5
+from eli5.sklearn import PermutationImportance
+
+perm = PermutationImportance(rsf, n_iter=15, random_state=random_state)
+perm.fit(X_test, y_test)
+eli5.show_weights(perm, feature_names=feature_names)
