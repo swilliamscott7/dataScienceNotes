@@ -45,6 +45,10 @@ def get_args():
     tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
 
 if __name__ == '__main__':
-    args = get_args()
-    tf.logging.set_verbosity(args.verbosity)
-    train_and_evaluate(args)
+	# when python interpreter reads a source file will set special variables like __name__ before it then executes code in file. If module being run directly then __name__='main'
+	print('argsparse_examples.py is being run directly in the console/wherever')   
+	args = get_args()
+	tf.logging.set_verbosity(args.verbosity)
+	train_and_evaluate(args)
+else:
+	print('argsparse_examples.py is being imported into another module/script to be run instead. __name__ = nameofyourcurrentmodule instead')
