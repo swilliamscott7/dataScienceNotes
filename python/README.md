@@ -13,3 +13,9 @@ Virtual Environments?
   - Handles dependencies 
   - Can ensure your app will work on a client computer 
   - Helps colleagues collaborate 
+
+
+Useful design patterns in python:
+- Factory pattern
+- Decorator Pattern (e.g. @property,@classmethod,@staticmethod)
+- The Building pattern
