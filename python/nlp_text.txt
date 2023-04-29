@@ -1,0 +1,300 @@
+##### NLP + String Formatting ######
+
+# Read .txt as a string object
+with open(file_name) as f:
+    file_name_data = f.read()
+file_name_data=file_name_data.lower()
+# Find all the words and get into a list - think this handles the /n newline elements
+words = re.findall('\w+',file_name_data)
+
+
+# !pip install nltk 
+import nltk
+# nltk.download('punkt') # ('stopwords')
+# nltk.download('averaged_perceptron_tagger')
+from nltk.tokenize import word_tokenize
+from nltk.tag import pos_tag
+
+list_stopwords = nltk.corpus.stopwords.words("english")
+# Stem words # 
+#ps = nltk.stem.porter.PorterStemmer()
+stemmer = nltk.stem.PorterStemmer()
+stemmer.stem("production")
+
+ # Lemmatize word #
+from nltk.stem.wordnet import WordNetLemmatizer
+lemmatizer = WordNetLemmatizer()
+lemmatizer.lemmatize('products')
+# lem = nltk.stem.wordnet.WordNetLemmatizer()
+
+def preprocess(sent):
+    sent = nltk.word_tokenize(sent)
+    sent = nltk.pos_tag(sent) # Issue is that they all come out as proper nouns i.e. NNP 
+    return sent
+
+# spacy has a bunch of pipelines you can just install and load in - these can then do a bunch of preprocessing for you e.g. https://spacy.io/models/en
+### THIS PIECE OF CODE IMPORTS A PREPROCESSING PIPELINE FROM SPACY THAT IS ABLE TO DO POS TAGGING AMONGST OTHER THINGS. 
+### I USE IT TO ITERATE THROUGH VOICE SEARCHES. FOR EACH WORD IN THE VOICE SEARCH, I TAG IT WITH A POS ENTITY SO I CAN THEN IDENTIFY WHICH SEARCHES INCLUDE A PERSON NAME
+import spacy
+import en_core_web_sm  # English pipeline optimized for CPU. Components: tok2vec, tagger, parser, senter, ner, attribute_ruler, lemmatizer.
+nlp = spacy.load("en_core_web_sm")
+
+results = pd.DataFrame({'action_query':[],'Type':[]})
+for search in searches:
+    doc = nlp(search)
+    for entity in doc.ents:
+        results = results.append(dict(action_query = entity.text, Type = entity.label_), ignore_index=True)
+results.loc[results['Type']=='PERSON', 'action_query'].tolist()
+
+### USING CORPUSES OF NAMES FROM ONLINE TO IDENTIFY IF VOICE SEARCH RELATED TO AN ACTOR OR DIRECTOR  
+female_names = pd.read_csv('https://www.cs.cmu.edu/afs/cs/project/ai-repository/ai/areas/nlp/corpora/names/female.txt')
+male_names = pd.read_csv('https://www.cs.cmu.edu/afs/cs/project/ai-repository/ai/areas/nlp/corpora/names/male.txt')
+
+# Alternatives to Levenshtein Distance to compare substrings that are essentially referring to the same thing # https://www.datacamp.com/community/tutorials/fuzzy-string-python
+# Useful in spelling checks / mapping databases that lack a common key etc. 
+from fuzzywuzzy import fuzz
+
+# example 1 # 
+Str1 = "Los Angeles Lakers"
+Str2 = "Lakers"
+Ratio = fuzz.ratio(Str1.lower(),Str2.lower())
+Partial_Ratio = fuzz.partial_ratio(Str1.lower(),Str2.lower())
+print(Ratio) # 50 
+print(Partial_Ratio) # 100
+
+# example 2 #
+Str1 = "united states v. nixon"
+Str2 = "Nixon v. United States"
+Ratio = fuzz.ratio(Str1.lower(),Str2.lower())
+Partial_Ratio = fuzz.partial_ratio(Str1.lower(),Str2.lower())
+Token_Sort_Ratio = fuzz.token_sort_ratio(Str1,Str2)
+print(Ratio) # 59
+print(Partial_Ratio) # 74
+print(Token_Sort_Ratio) # 100
+
+
+
+##### 
+import string
+string.punctuation # lists all puncutation 
+
+adj_suffix = ["able", "ese", "ful", "i", "ian", "ible", "ic", "ish", "ive", "less", "ly", "ous"]
+any(word.endswith(suffix) for suffix in adj_suffix)
+
+# To remove special characters: #
+corpus = "learning% makes 'me' happy. i am happy be-cause i am learning! :)"
+corpus = re.sub(r"[^a-zA-Z0-9.?! ]+", "", corpus)
+
+
+
+calibrator = CalibratedClassifierCV(base_estimator=lgbm_clf, # stacking ensemble here??  
+                                    cv='prefit',
+                                   method='isotonic') # 'sigmoid'
+calibrator.fit(X_train_oot, y_train_oot)
+# evaluate the model
+yhat = calibrator.predict_proba(X_test_oot)[:, 1]
+
+
+#########################################
+##### TOPIC MODELLING EXAMPLE ###########
+import gensim
+from gensim import corpora
+import pickle
+
+dictionary = corpora.Dictionary(text_data)
+corpus = [dictionary.doc2bow(text) for text in text_data]
+pickle.dump(corpus, open('corpus.pkl', 'wb'))
+dictionary.save('dictionary.gensim')
+
+NUM_TOPICS = 8
+ldamodel = gensim.models.ldamodel.LdaModel(corpus, num_topics = NUM_TOPICS, id2word=dictionary, passes=50)
+ldamodel.save('model5.gensim')
+topics = ldamodel.print_topics(num_words=6)
+# outputs weightings 
+for topic in topics:
+    print(topic)
+
+dictionary = gensim.corpora.Dictionary.load('dictionary.gensim')
+lda = gensim.models.ldamodel.LdaModel.load('model5.gensim')
+import pyLDAvis.gensim
+lda_display = pyLDAvis.gensim.prepare(lda, corpus, dictionary, sort_topics=False)
+pyLDAvis.display(lda_display)
+####################################################################################
+
+
+
+
+# Creating a vector from the text corpus # Might be too sparse, so might be worth transforming first e.g. applying PCA / Feature Selection etc.
+vectorizer = feature_extraction.text.CountVectorizer(max_features=10000, ngram_range=(1,2))
+## Tf-Idf (advanced variant of BoW)
+vectorizer = feature_extraction.text.TfidfVectorizer(max_features=10000, ngram_range=(1,2))
+corpus = df['clean_text']
+vectorizer.fit(corpus)
+X_train = vectorizer.transform(corpus)
+dic_vocabulary = vectorizer.vocabulary_
+# to visualise the sparseness of the matrix # 
+sns.heatmap(X_train.todense()[:,np.random.randint(0,X.shape[1],100)]==0, vmin=0, vmax=1, cbar=False).set_title('Sparse Matrix Sample')
+
+# Could then train ML model - recommends Naive Bayes 
+# NB suitable for large dataset as considers features independently, calculates probability of each class, and predicts argmax
+classifier = naive_bayes.MultinomialNB()
+model = pipeline.Pipeline([("vectorizer", vectorizer),  
+                           ("classifier", classifier)])
+model["classifier"].fit(X_train, y_train)
+X_test = df_test["text_clean"].values
+y_pred = model.predict(X_test)
+y_predicted_prob = model.predict_proba(X_test)
+# Now plot ROC /Confusion Matrix / PR-Curve 
+## To understand why a single observation is predicted to be a certain class:
+txt_instance = df_test["text"].iloc[1200] # chose observation 1200 as incorrectly classified - want to understand why 
+print("True:", y_test[1200], "--> Pred:", y_pred[1200], "| Prob:", round(np.max(y_predicted_prob[1200]),2)) 
+## show explanation
+from lime import lime_text
+explainer = lime_text.LimeTextExplainer(class_names=np.unique(y_train))
+explained = explainer.explain_instance(txt_instance, model.predict_proba, num_features=3)
+explained.show_in_notebook(text=txt_instance, predict_proba=False)
+
+sentence.split()
+
+words = word_tokenize("I love coding in Python")
+print(words)
+nltk.pos_tag(words) # Part of Speech Taggin - extracts grammatical structure e.g verb/noun/proposition
+
+token_list = nltk.pos_tag(tokens) # 'JJ' adjectives
+adj_list = [i for i, v in token_list if v == 'JJ']   # 'PRP','VBP', 'VBG', 'NNP'
+# bag-of-words
+watchmen_dictionary = {x:adj_list.count(x) for x in adj_list} 
+
+# Named Entity Recognition (i.e. groups into people/places etc.)
+nltk.download('maxent_ne_chunker')
+i = nltk.ne_chunk(nltk.pos_tag(word_tokenize(sentence)), binary=True)
+[a for a in i if len(a)==1]
+
+# Homononyms - word sense disambiguation 
+from nltk.wsd import lesk
+sentence1 = "Keep your savings in the bank"
+sentence2 = "It's so risky to drive over the banks of the road"
+print(lesk(word_tokenize(sentence1), 'bank'))
+print(lesk(word_tokenize(sentence2), 'bank'))
+
+####
+import spacy
+spacy.load('en')
+from spacy.lang.en import English
+parser = English()
+def tokenize(text):
+    lda_tokens = []
+    tokens = parser(text)
+    for token in tokens:
+        if token.orth_.isspace():
+            continue
+        elif token.like_url:
+            lda_tokens.append('URL')
+        elif token.orth_.startswith('@'):
+            lda_tokens.append('SCREEN_NAME')
+        else:
+            lda_tokens.append(token.lower_)
+    return lda_tokens
+
+
+
+    import nltk
+nltk.download('wordnet')
+from nltk.corpus import wordnet as wn
+def get_lemma(word):
+    lemma = wn.morphy(word)
+    if lemma is None:
+        return word
+    else:
+        return lemma
+    
+from nltk.stem.wordnet import WordNetLemmatizer
+def get_lemma2(word):
+    return WordNetLemmatizer().lemmatize(word)
+
+def prepare_text_for_lda(text):
+    tokens = tokenize(text)
+    tokens = [token for token in tokens if len(token) > 4]
+    tokens = [token for token in tokens if token not in en_stop]
+    tokens = [get_lemma(token) for token in tokens]
+    return tokens
+
+
+
+
+NUM_TOPICS = 8
+ldamodel = gensim.models.ldamodel.LdaModel(corpus, num_topics = NUM_TOPICS, id2word=dictionary, passes=50)
+ldamodel.save('model5.gensim')
+topics = ldamodel.print_topics(num_words=6)
+for topic in topics:
+    print(topic)
+
+dictionary = gensim.corpora.Dictionary.load('dictionary.gensim')
+lda = gensim.models.ldamodel.LdaModel.load('model5.gensim')
+import pyLDAvis.gensim
+lda_display = pyLDAvis.gensim.prepare(lda, corpus, dictionary, sort_topics=False)
+pyLDAvis.display(lda_display)
+
+
+### Sentiment Analysis ####
+nltk.download('vader_lexicon')
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+from nltk import tokenize
+sentences = ["VADER is smart.", # positive sentence (simple)
+             "VADER is smart, handsome, and funny.", # positive sentence 
+             "The book was kind of good.", # positive sentence (intensity adjusted)
+             "A really bad, horrible book.",       # negative sentence with booster words
+             "The plot was good, but the characters are uncompelling and the dialog is not great.", # mixed negation sentence
+             "At least it isn't a horrible book.", # negated negative sentence with contraction
+             ":) and :(",     # emoticons handled
+             "",              # an empty string
+             "Today sux",     #  negative slang
+             "Today kinda sux! But I'll get by, lol" # mixed sentiment example with slang and constrastive conjunction "but"
+            ]
+sid = SentimentIntensityAnalyzer()
+for sentence in sentences:
+    print(sentence)
+    ss = sid.polarity_scores(sentence)
+    for k in sorted(ss):
+        print('{0}: {1}, '.format(k, ss[k]), end='')
+    print()
+
+paragraph = "It was one of the worst movies I've seen, despite good reviews. \
+Unbelievably bad acting!! Poor direction. VERY poor production. \
+The movie was bad. VERY BAD!"
+
+lines_list = tokenize.sent_tokenize(paragraph)
+
+for sentence in lines_list:
+    print(sentence)
+    ss = sid.polarity_scores(sentence)
+    for k in sorted(ss):
+        print('{0}: {1}, '.format(k, ss[k]), end='')
+    print()
+
+
+
+    # Import TfidfVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+# tf   = frequency of the word in the document 
+# idf  = weighting scheme that reduces the influence of frequent words like 'the'
+
+# Create a TfidfVectorizer: tfidf
+tfidf = TfidfVectorizer() 
+
+# Apply fit_transform to document: csr_mat
+csr_mat = tfidf.fit_transform(documents)
+
+# Print result of toarray() method
+print(csr_mat.toarray())
+
+# Get the words: words
+words = tfidf.get_feature_names()
+
+# Print words
+print(words)
+
+##### To create the bag of Words #####
+all_words = nltk.FreqDist(w.lower() for w in movie_reviews.words())    # bag-of-words created 
+word_features = list(all_words)[:2000]                                 # only the 2000 most popular words will be used as features in the classifier 
