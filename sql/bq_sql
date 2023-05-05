@@ -39,3 +39,61 @@ REGEXP_EXTRACT(path_col, r’\.([^\.]*$’)
 To get table metadata:
 SELECT *, size_bytes/pow(10,9) as size_gb, timestamp_millis(creation_time) as creation_time_readable FROM `project.Campaign_Evaluation.__TABLES__` 
 SELECT * FROM `project.Campaign_Evaluation.INFORMATION_SCHEMA.COLUMNS` WHERE table_name = ‘metadata’ AND is_partitioning_column = ‘YES’ OR clustering_ordinal_position IS NOT NULL;
+
+
+##### ARRAYS ####
+An array is an ordered list of data values of the same data type, be it INT64, or complex data types, such as STRUCTs.  
+Uses seuqared brackets e.g.SELECT ['UK','Italy','Spain','Sweden'] AS flags
+Use unnest to flatten array into multiple rows (order not preserved)
+SELECT flag, colours 
+  FROM (SELECT 'Union Jack' AS flag)
+       CROSS JOIN UNNEST(['red','white'                          ,'blue']) AS colours
+
+but if want to flatten arrays while preserving values of other columns use a cross join
+### EXAMPLE 1 #####
+WITH arr AS (
+select [1,2,3,4] as rep, [10,20,30,40] as count ) 
+,avg AS (
+select r,avg(c) as coun from arr, unnest(rep) as r , unnest(count) as c group by r
+        )
+,list AS (
+select r from unnest(generate_array(1,20)) AS r
+) 
+select list.r, coalesce(avg.coun,0) from list left join avg using(r) 
+
+
+## EXAMPLE 2 ##
+WITH TEMP AS (
+
+
+SELECT ACCOUNT_NUMBER, 
+                 MONTH AS REFERENCE_MONTH, 
+                 GENERATE_ARRAY(MONTH-5,MONTH, 1) AS MTHS
+FROM `PROJECT.viewing_features.Viewing_dataset_ssc24_v2`
+) 
+
+
+SELECT TEMP.*  EXCEPT(MTHS), 
+                 all_months,
+                 ARRAY_LENGTH(MTHS) AS LEN
+   FROM TEMP,   UNNEST(TEMP.MTHS) AS all_months
+
+You have to select the unnested bit for it to take effect 
+
+### EXAMPLE 3 ### searching an array where exams is the array
+SELECT name 
+FROM students, UNNEST(exams) AS e 
+WHERE length(e) >7
+
+
+#### STRUCTS - Data type - containers for other fields allows you to create a set of fields in a single RECORD type
+Each field has a type (required) and field name (optional).
+Can have a struct inside an array - this is when thye are most powerful 
+
+SELECT 1234 AS id
+      ,STRUCT( 'Tom' AS name
+              , 28 as age
+              , DATE('1990-02-10') AS dob
+              ) AS details
+
+
