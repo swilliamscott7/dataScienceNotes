@@ -1,10 +1,88 @@
-# Everything in python is an object, names are just identifiers which are bound to an object
+
+- Basic data types 
+
+- There are 4 collection data types:
+    - lists []
+    - dicts {}
+    - tuples ()
+    - set 
+    
+Other dtypes:
+    - arrays 
+    - matrix (2D array i.e. vector! - elements all of same dtype)
+    - dataframe (2D list of lists- elements only of same type if in same column)
+    
+   # Everything in python is an object, names are just identifiers which are bound to an object
+
+# Copying Variables
+- look at lists specifically here:
+- You cannot copy a list simply by using the assignment statement i.e.  list2 = list1
+    - list2 will only be a reference to list1
+    - therefore changes made in list1 will automatically also be made in list2
+    - it binds a target and an object so list 1 and list 2 share the same reference 
+
+- Instead, use the built-in List method copy()
+    - ny changes made in new DataFrame don't get reflected in the original one.
+
 # below : observe that both second and first can be used to refer to the same object
 def first(msg):
     print(msg)
 first("Hello")
 second = first
 second("Hello")
+### Lists
+
+- iterable 
+- ordered
+- mutable 
+- allows duplicate members 
+- heterogenous data types
+### Tuples
+- Like a list, except: 
+    - immutable (i.e. can't modify values once constructed)
+    - uses parentheses (), not squared brackets [] 
+- ordered 
+- allows duplicate members
+- Can unpack a tuple in the order the elements appear
+- Can access individual elements in a tuple using indexing
+- Can make functions return multiple values
+- Tuples are faster than lists. If you're defining a constant set of values and all you're ever going to do with it is iterate through it, use a tuple instead of a list ) 
+# Iterators (For Loops)
+- defn = an object that has an associated next() method 
+-Can loop over these special objects called iterables (basically any object with an associated iter() method:
+   - lists
+   - strings 
+   - dictionaries 
+   - file connections 
+- Applying iter() to an iterable, creates an iterator
+### Iterating at once with *   --> unpacks all
+
+- The asterisk unpacks the iterable object to give the individual elements- just place * left of the object 
+- list-like iterable - produces the elements of the list in the order they appear in the list. 
+- dict-like object - produces keys of the dict 
+- Iterable or iterator ??? 
+To see which is which, do print(), next() of these
+- Iterators are expensive to run, especially if nested 'for loops' --> try to filter before 'for loop' 
+- Never use a 'for loop' in pandas DF- create a function and then use .map() or .apply() on the array(s)/column(s)
+  
+# Methods vs Attributes vs Functions 
+
+- Function
+    - Needs an input (parameters) and produce an output 
+    - maps an input to an output
+- Methods 
+    - Need parentheses  E.G. df.tail(), df.info()
+    - doesn't need parameter 
+- Attributes 
+    - No parentheses  E.G. df.columns, df.shape
+
+    NoneType is the type for the None object, which is an object that indicates no value. None is the return value of functions that "don't return anything". It is also a common default return value for functions that search for something and may or may not find it; for example, it's returned by re.search when the regex doesn't match, or dict.get when the key has no entry in the dict. You cannot add None to strings or other objects.
+# Set
+- unordered and unindexed collection 
+- No duplicate members- just unique ones
+- enclosed with curly brackets 
+- Since unindexed, the only way to access items of a set is using a for loop (because a set is iterable)
+- A major advantage of using a set, as opposed to a list, is that it has a highly optimized method for checking whether a specific element is contained in the set. This is based on a data structure known as a hash table.    
 
 # Higher order functions - functions that take other functions as arguments #
 def inc(x):
@@ -25,6 +103,15 @@ def is_called():
     return is_returned
 new = is_called()
 new()
+
+
+# Dictionaries 
+
+- Provide mappings
+- Key, value pairs 
+- Unordered, changeable and indexed
+- No duplicate members 
+
 
 ##### CONSTRUCTORS #######
 # Used for instantiating an object - the task of the contructor is to intiialise (assign values) to the members of the class when an 
@@ -125,6 +212,7 @@ print (person2.age)
 print (Person.isAdult(22))
 # use cases : @staticmethod vs @classmethod - use class to create factory methods (i.e. return class object) vs static to create utility functions
 
+                                                       
 # Python decorators make extensive use of closures 
 # Functions & Methods are called 'callable' because they can be called (will have attribute .__call__ 
 # In fact anything which implements __call__() is termed callable 
@@ -172,7 +260,31 @@ isinstance(foo, pd.DataFrame) # checks data type
 # each method takes self as a parameter
 # each attribute is self. something e.g. self.dim, self.shape, self.summary
 # each object has attributes and methods 
+# Scope and User-Defined Functions 
 
+- Not all objects are accessible everywhere in a script
+- <b> Scope </b> = part of the program where an object or name may be accessible. There are 3 types: 
+    - <b> Global Scope </b>   - defined in the main body of the script
+    - <b> Local Scope </b>    - defined within a function 
+    - <b> Built-in Scope </b> - named in the pre-defined built-ins module python 3 provides e.g. print(), sum()
+    
+   LEGB rule 
+- Python will look in the Local scope, then Enclosing function (if exists), Global scope, then Built-in scope. If can't find in local, will look then and only then in global scope. 
+  # Generators (generator expressions)
+
+- like a list comprehension, except it doesn't store the list in memory - see example 2
+- returns a generator object 
+- uses curly not squared brackets
+- doesn't construct a list, but is an object we can iterate over to produce elements of the list as required - see example 1
+- Like any other iterator, can pass the function next() to iterate through its elements 
+- utilised when we intend to calculate a large set of results but would like to avoid allocating the memory needed for all results at the same time i.e. generate values on the fly and do not store previous values in memory - thus we can only iterate over them once.                                                      
+# Context Manager (with)
+# with open(r'C:\Users\SSC24\OneDrive - Sky\Documents\My Tableau Repository\Logs\log.txt', mode='r') as file:
+#     print(file.read())
+- we can open a connection to a file using context manager-
+- the with statement is the context manager - it ensures resources are efficiently allocated when opening a connection to a file
+- when you open a connection to a file using context manager, it automatically becomes a generator object
+                                                       
 #### Why use classes & OOP ?? #####
 
 # 1. Encapsulation - i.e. bundling of data with the methods associated with the instance
