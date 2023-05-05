@@ -29,3 +29,13 @@ SET var_name = 50;
 
 ### SAMPLING ###
 RAND() vs FARM_FINGERPRINT to achieve repeated random sampling 
+
+unpack array using the UNNEST(array_col) function
+nested and repeated fields like ARRAYS which need to broken apart into separate rows in your dataset. This is accomplished by using the UNNEST() function
+SPLIT(content, ‘\n’) # splits cell content by newline into array
+An array is still essentially one row, just broken down into multiple lines
+REGEXP_CONTAINS(colname, r’[\t]’,1,0)
+REGEXP_EXTRACT(path_col, r’\.([^\.]*$’)
+To get table metadata:
+SELECT *, size_bytes/pow(10,9) as size_gb, timestamp_millis(creation_time) as creation_time_readable FROM `project.Campaign_Evaluation.__TABLES__` 
+SELECT * FROM `project.Campaign_Evaluation.INFORMATION_SCHEMA.COLUMNS` WHERE table_name = ‘metadata’ AND is_partitioning_column = ‘YES’ OR clustering_ordinal_position IS NOT NULL;
