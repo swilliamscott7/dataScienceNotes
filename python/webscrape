@@ -1,0 +1,131 @@
+import requests, json
+#url = 'http://img.omdbapi.com/?t=thesocialnetwork'     # '?t=thesocialnetwork'  is called the query string, signposted by the '?' - the 't' stands for title and is the title of the movie
+url= 'http://img.omdbapi.com/?apikey=723a&t=thesocialnetwork'  # they recently changed it so need an API key - can use datacamps free access 
+r = requests.get(url)
+json_data = r.json()
+for key, value in json_data.items() :
+    print (key + ':' + value)
+    
+from bs4 import BeautifulSoup   # parse html 
+import requests # imports the webpage using the url 
+import pandas as pd
+import numpy as np
+import re   # for text manipualtion + regex 
+
+source = requests.get('https://www.ebay.com/b/Cell-Phone-Smartphone-Parts/43304/bn_151926?rt=nc&_pgn=1').text    
+soup = BeautifulSoup(source, 'lxml')  # lxml is a specific type of parser, read documentation of BS for more 
+# print(soup.prettify())
+
+# Based on what we want to scrape from the page, can cut this down drastically using the specific element 
+item = soup.find('li', class_='s-item')
+# print(item.prettify())
+
+# Narrowing this down even further: 
+item_title = item.find('h3', class_='s-item__title')
+
+print(item_title.prettify())
+
+from bs4 import BeautifulSoup 
+import requests
+
+url = 'https://www.theguardian.com/books/2019/mar/19/geoffrey-chaucer-teenage-female-biographer-marion-turner'
+r = requests.get(url)
+html_doc = r.text
+soup = BeautifulSoup(html_doc[:1000])       # this creates a BS object and we take the first 1000 characters here
+#print(soup.prettify())               # is indented the way you would expect normal html to be written 
+
+# If we just wanted a specific attribute of this file: (e.g. title)
+soup_title = soup.title
+#print(soup_title)
+
+#If we just wanted the text part
+soup_text = soup.get_text()     
+#print(soup_text)
+
+#Extracting the hyperlinks - hyperlinks are defined by the html tag <a> 
+a_tags = soup.find_all('a')
+#for link in a_tags:
+#    print(link.get('href'))
+
+
+
+
+url = requests.get('https://en.wikipedia.org/wiki/Blog')
+url_text= url.text
+
+from bs4 import BeautifulSoup
+
+soup = BeautifulSoup(url_text)
+
+# kill all script and style elements
+for script in soup(["script", "style"]):
+    script.extract()    # rip it out
+
+# get text
+text = soup.get_text()
+
+# break into lines and remove leading and trailing space on each
+lines = (line.strip() for line in text.splitlines())
+# break multi-headlines into a line each
+chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+# drop blank lines
+text = '\n'.join(chunk for chunk in chunks if chunk)
+
+#print(text)
+
+
+# Now to build the dictionary    -- Note need to find a way to look at words and not just characters. 
+
+langs_count = {}                   #initialise an empty dictionary 
+
+for word in text:
+    if word in langs_count.keys():
+        langs_count[word] += 1
+        
+    else :
+        langs_count[word] = 1
+        
+#print( langs_count )
+
+#print(sorted([(value,key) for (key,value) in langs_count.items()], reverse= True))
+
+# Or using method 2 : 
+import operator
+sorted_langs_count = sorted(langs_count.items(), key=operator.itemgetter(1), reverse=True)
+#print (sorted_langs_count)
+
+# Extract text out of the result by simply adding .text at the end 
+item_title = item.find('h3', class_='s-item__title').text
+print(item_title)
+
+# To get price of phone
+item_price = item.find('span', class_='s-item__price').text
+print(item_price)
+
+
+source = requests.get('https://www.ebay.com/b/Cell-Phones-Smartphones/9355/bn_320094?rt=nc&_pgn=1').text    
+soup = BeautifulSoup(source, 'lxml')
+items = soup.find('li', class_='s-item')
+
+# Where a certain attribute, doesn't except can use this format: 
+# if an error is raised (i.e. item does not have that attribute) will assign 'None'
+try:  
+    item_title = items.find('h3', class_='s-item__title').text
+except Exception as e:
+    item_title = 'None'
+
+print(item_title)
+
+try:  
+    item_desc = items.find('div', class_='s-item__subtitle').text
+except Exception as e:
+    item_desc = 'None'
+
+print(item_desc)
+
+try:
+    item_brand = items.find('span', class_='s-item__dynamic s-item__dynamicAttributes1').text
+except Exception as e:
+    item_brand = 'None'
+
+print(item_brand)
