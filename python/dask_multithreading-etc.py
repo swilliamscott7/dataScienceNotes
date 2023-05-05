@@ -7,8 +7,13 @@ p = multiprocessing.Pool(cores)
 p = multiprocessing.Pool()
 results = p.map(continuous_didq_check, continuous_columns)   # does data integrity-data quality check (min,max,mean etc.) on all the continuous columns in your list
 
+def parallel_apply(apply_func, groups, nb_cores):
+    with Pool(nb_cores) as p:
+        results = p.map(apply_func, groups)
+    return pd.concat(results)
+parallel_apply(take_mean_age, df.groupby('year'), 2)
 
-## DASK - allows you to scale your computations to run on a cluster of machines ## 
+## DASK - allows you to scale your computations to run on a cluster of machines ## layer of abstraction to avoid writing such low level code
 import dask.dataframe as dd
 df = dd.read_csv('file.csv')
 
