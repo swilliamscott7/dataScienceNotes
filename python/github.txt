@@ -1,0 +1,4 @@
+git config --global user.name 'ssc24'
+git config --global user.email "stuart.scott2@sky.uk"
+git config --global credential.helper store
+git clone https://github.com/example_repo
