@@ -1,0 +1,132 @@
+https://twiecki.io/blog/2019/01/14/supply_chain/ 
+
+Watch this : https://www.youtube.com/watch?v=ATaMq62fXno 
+
+import pymc3 as pm
+import theano.tensor as tt
+
+What?
+	- Python package for probabilistic programming (PP), building and fitting Bayesian Models using Markov Chain Monte Carlo Algorithms (MCMC)
+		○ In contrast to deterministic models where given a set input, the output will always be the same. No randomness
+		○ Probabilistic models take into account uncertainty, cannot guarantee same output
+	- Most user friendly + scalable of this kind (uses Theano with JAX backend)
+
+Why use Bayesian?
+	- Useful where small datasets
+	- If have lots of knowledge about data generation process can incorporate (i.e. includes prior knowledge)
+		○ Hence known as generative models 
+		○ Highly customisable
+		○ Can include knowledge of:
+			§ Prior assumptions about how the world is
+			§ a range of values we expect for inputs
+			§ data structures e.g. nested data. So some variables related to some but not other params)
+	- Can quantify uncertainty around estimates (i.e Produces a posterior distribution, not just points estimates)
+	- Argument that can more easily map these to business problems (as highly interpretable and posterior distribution provided)
+	- Conversely, prediction-focused ML cannot incorporate domain knowledge hence why they require so much data to learn all these things
+		○ Thus, rather than changing our problem to fit the solution, as is common with ML, we can tailor the solution to best solve the problem at hand
+		○ Separately, whilst complex models can extract non-linear predictive patterns, issue is that most business problems aren't simple prediction but rather inference problems
+
+How to use PyMC3?
+	- Just specify your models as Python code
+	- Will automatically estimate it without requiring manual mathematical derivations
+	- Can run quickly and scale to complex models on large(ish) data sets
+	- Outputs are the posterior distributions
+
+
+Example of using Bayesian Decision Theory (instead of ML)
+
+	- Combines Bayesian Model + Simulations + …
+	- Aims to highlight how to use Bayesian statistics as part of a larger data-driven system to provide actionable, business interpretable recommendations & KPIs
+	- Problem Type?
+		○ Your business provides rocket trips to the moon. Each trip generates revenue by passenger tickets
+		○ Need a new rocket for every trip
+		○ Limited budget to buy rockets from 3 suppliers. Each supplier can only provide so much (known), and each has varying success rate with their rockets (i.e. passes our company's stress tests), but this is an unknown RV between 0-1(%). We know price of rocket for each supplier (known) + storage cost of unused rockets
+		○ Random Variables (unknowns) that we need to predict are:
+			§ Rocket success rate for each supplier
+				□  (n.b. some companies newer than others, so less data points to assess this so larger confidence intervals)
+			§ Ticket sales (to decide how many rockets needed)
+		○ Decision Variables
+			§ How many rockets to buy and how many from each supplier
+		○ Costs
+			§ Storing unused rockets
+		○ Objective = Max profit s.t. 
+		
+	- Why a single Bayesian Model isn't enough?
+		○ Bayesian model provides a posterior probability for your budget allocation decision
+		○ Great, except that manager only needs a single point estimate (i.e. to know how many to order from each supplier)
+
+	- Solution
+		○ We model the decision making process itself and incorporate model estimate directly into that
+		○ It maps the business decisions to outcomes, so that we can simulate scenarios to find best decision under all plausible future scenarios (and not just the most likely scenario (i.e. using simple mean values as inputs)
+		1. Forecast demand
+			- Simply uses underlying distribution from historic data
+			- Could instead use Prophet forecasting model 
+				- https://github.com/luke14free/pm-prophet
+		2. Define loss function (e.g. profit that is a function of stock/demand/ticket_price/storage cost/purchase_price)
+			§ We invert profit value (i.e. add a minus) as usually aim to minimise loss function
+			§ Could plot this like so (Assumes demand=50, and highlights better to have excess than shortage as margins > storage costs for each unit i.e. having fewer eats into our profits at a greater rate than ordering excess engines - see shallower line)
+				□ 
+			
+		3. Create a Bayesian model using PyMC3 to predict rocket success rate
+			- see code for this in separate tab
+			- fits 3 models for 3 supplier data sets
+			- Posterior distribution has highest uncertainty with newest supplier as fewest data points
+			- Can trivially predict what future might look like using our posterior predictive distribution (generates new samples based on esimated posteriors) 
+		4. Optimisation part
+			i. Define objective function
+			
+			def objective(orders, supplier_yield=supplier_yield_post_pred,
+			              demand_samples=demand_samples, max_order_size=MAX_ORDER_SIZE):
+			    orders = np.asarray(orders)
+			    losses = []
+			    
+			    # Negative orders are impossible, indicated by np.inf
+			    if np.any(orders < 0):
+			        return np.inf
+			    # Ordering more than the supplier can ship is also impossible
+			    if np.any(orders > MAX_ORDER_SIZE):
+			        return np.inf
+			    
+			    # Iterate over post pred samples provided in supplier_yield
+			    for i, supplier_yield_sample in supplier_yield.iterrows():
+			        full_yield, price_per_item = calc_yield_and_price(
+			            orders,
+			            supplier_yield=supplier_yield_sample
+			        )
+			        
+			        # evaluate loss over each sample with one sample from the demand distribution
+			        loss_i = loss(full_yield, demand_samples[i], price_per_item)
+			        
+			        losses.append(loss_i)
+			        
+			    return np.asarray(losses)
+			
+				□ You define how many samples (based on how many samples you pull from the bayesian posterior distribution)
+				□ Inputs include
+					® Orders per supplier (this is not defined as is the decision variable - optimiser will handle this)
+					® success_rate_per_supplier using bayesian model (uses deterministic value)
+					® max order constraints
+					® demand_samples (based purely on poisson underlying distribution of historic data, as many as there are samples) 
+				□ Will calculate loss function over each supplier, with aim to min as inversed remember
+				□ .t. constraints (e.g. max order per supplier, budget…)
+				□ Uses loss function within this 
+			§ Put this into optimizer:
+				□ From scipy import optimize 
+				□ Optimize.minimize(lambda *args: np.mean(objective_func(*args),starting_value,bounds=bounds))
+					® Returns optimal order amount from each supplier
+					® Returns objective function value (i.e. profit) based on optimal allocation
+				□ Can trial different optimisers to see which gets largest objective function
+				□ Check optimiser converges 
+				□ optimizers seem to be very sensitive to the initial values and risk that they get stuck in local minima…
+					® Try basin hopping optimiser if so 
+		○ So will not just inform a decision but makes a decision
+		5. Evaluation & Prove better than current best approach
+			- Show that this complex approach outperforms a simple, naïve method 
+			- We use historic mean success rate of each rocket for each supplier rather than sample from predicted posterior distribution
+			- Pass mean values into objective function (i.e. mean demand, mean success rate etc. )
+			- Plug into optimiser to get optimal order amounts + associated expected profit from Naïve Model 
+			- Find that Bayesian Model has very different order allocation but far higher profit value indicating the added value of including uncertainty
+		○ Will allow you to communicate the impact of the model in monetary terms which is what the business cares about 
+			§ They don’t actually care about customer propensity 
+
+N.B. This problem type can be generalised. E.G. How much to allocate to each advertiser where need to predict the expected conversion rate for each based on historic data 
