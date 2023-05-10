@@ -1,0 +1,36 @@
+# Fits a model on each of the three suppliers #
+# Each supplier has different set of data points # 
+
+# Compile Model # 
+with pm.Model() as model:
+    # Define priors on alpha and beta parameters for each supplier #
+    α = pm.HalfNormal('α', sd=10., shape=3) + 1   # a half-normal continuous RV. Similar to normal except when expect only non-negative values 
+    β = pm.HalfNormal('β', sd=10., shape=3) + 1
+    
+    # Define likelihood here? - Different likelihood for each supplier because different no. of data points # 
+    for i, d in enumerate(data):
+        # We use pm.Beta() as this models probabilities with expected values 0-1, has two parameters: alpha & Beta (both shape parameters)
+        pm.Beta(f'supplier_yield_obs_{i}', alpha=α[i], beta=β[i],observed=d)
+   # Fits your model to the data - can specify number of MCMC samples to generate, step method to use etc. #
+    trace = pm.sample() # e.g. pm.sample(1000,tune=1000)
+
+# make sure convergence looks good
+az.plot_energy(trace)
+# analyse results # 
+pm.traceplot(trace) # this visualises the priors 
+plt.show() 
+
+# Generate possible future scenarios to explore posterior distribution # 
+with model:
+    post_pred = pm.sample_posterior_predictive(trace, 1000)
+
+# Display posterior distributions for each supplier # 
+supplier_yield_post_pred = pd.DataFrame({k: v[:, 1] for k, v in post_pred.items()})
+data_tidy = supplier_yield_post_pred.unstack().to_frame('yield')
+data_tidy.index = data_tidy.index.set_names(['supplier', 'obs'])
+g = sns.FacetGrid(data=data_tidy.reset_index().dropna(), col='supplier')
+g.map(sns.distplot, 'yield', kde=False)
+
+
+
+
