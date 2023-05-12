@@ -1,0 +1,355 @@
+### BETTER DISPLAY FOR NOTEBOOKS ####
+from IPython.core.interactiveshell import InteractiveShell
+pd.set_option('display.max_rows', 500)
+pd.set_option('display.max_columns', 1000)
+pd.set_option('display.width', 1000)
+InteractiveShell.ast_node_interactivity = "all"
+
+
+import pandas as pd
+import numpy as np
+import seaborn as sns 
+import matplotlib.pyplot as plt
+import tools
+import shap
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
+def plot_abs_SHAP_summary(df_x, df_shap, max_display=None,save_fig=False,filename=None,pos_target_correlation='good'):
+    
+    # Get correlations and importances
+    corrs = df_x.corrwith(df_shap)
+    shap_importances = df_shap.abs().mean()
+    shap_importances.sort_values(ascending=False, inplace=True)
+    corrs = corrs.loc[shap_importances.index]
+    
+    # Configure plot inputs
+    if not max_display:
+        max_display = len(shap_importances)
+    shap_importances = shap_importances.iloc[:max_display]
+    corrs = corrs.iloc[:max_display]
+    norm = plt.Normalize(corrs.min(), corrs.max())
+    if pos_target_correlation=='good':
+        colors = plt.cm.bwr_r(norm(corrs)) 
+        scalar_color_map = plt.cm.ScalarMappable(cmap="bwr_r", norm=norm) #if you don't like my colors, change here
+    else:
+        colors = plt.cm.bwr(norm(corrs)) 
+        scalar_color_map = plt.cm.ScalarMappable(cmap="bwr", norm=norm) #if you don't like my colors, change here
+    scalar_color_map.set_array([])
+    labels = shap_importances.index
+    
+    # Plot
+    plt.figure(figsize=(12,len(shap_importances)*0.5))
+    sns.barplot(x=shap_importances, y=np.arange(len(shap_importances)), orient='h', palette=colors, edgecolor="black")
+    sns.despine(top=True, right=True)
+    colorbar = plt.colorbar(scalar_color_map, aspect=50)
+    colorbar.set_label('SHAP-feature correlation', fontsize=14)
+    colorbar.set_ticks(np.arange(-1,1.25,0.25))
+    plt.yticks(np.arange(len(shap_importances)), labels=labels, fontsize=12)
+    plt.xlabel('mean(|SHAP value|) (average impact on model output magnitude)', fontsize=14)
+    plt.title('SHAP feature importance', fontsize=18)
+    if save_fig:
+        plt.savefig('outputs/{}.png'.format(filename), bbox_inches='tight')
+    plt.show()      
+    
+X_train.index.name = 'index'
+X_test.index.name = 'index'
+df_shap = pd.DataFrame(data=shap_values.values, columns=X_test.columns, index=X_test.index)
+plot_abs_SHAP_summary(X_test, df_shap, max_display=None,save_fig=True,filename='shap.png',pos_target_correlation='bad')
+    
+#### partial dependence plots ####
+# Ignores -99999 values #
+for feature in final_features:
+    if (X_test_final[feature]==-99999).sum() > 0:
+        print('Excludes -99999 values')
+        shap.dependence_plot(feature,
+                             shap_values.values[X_test_final[feature]!=-99999],
+                             X_test_final.loc[X_test_final[feature]!=-99999],
+                             interaction_index=None)
+    print('All values included')
+    shap.dependence_plot(feature,
+    shap_values.values,
+    X_test_final,
+    interaction_index=None)
+
+def model_eval(model, X_train, y_train, X_test, y_test):
+    """ """
+    y_test_predictions =  model.predict(X_test)
+    rmse_test = mean_squared_error(y_test, y_test_predictions, squared=False)
+    mae_test = mean_absolute_error(y_test,  y_test_predictions)
+    r2_test = r2_score(y_test, y_test_predictions)
+    
+    y_train_predictions =  model.predict(X_train)
+    rmse_train = mean_squared_error(y_train, y_train_predictions, squared=False)
+    mae_train = mean_absolute_error(y_train,  y_train_predictions)
+    r2_train = r2_score(y_train, y_train_predictions)
+    
+    results_df = pd.DataFrame({'Metrics':['RMSE','MAE','R-Squared'],'Train':[rmse_train, mae_train, r2_train],'Test':[rmse_test, mae_test, r2_test]})
+    
+    # display(results_df)
+    
+    return results_df
+    
+    
+class FeatureSelection():
+    
+    """ 
+    Handles high dimensionality datasets by applying feature selection methods to produce a more manageable dataset
+    """
+
+    def __init__(self,X_train,y_train,X_test,y_test,model):
+        """
+        Constructor for feature selection given an input dataset and associated modelling framework
+        """
+        self.X_train = X_train
+        self.X_test = X_test
+        self.y_train = y_train
+        self.y_test = y_test
+        self.model = model
+        # Not sure whether to include these here # 
+        self.corr_df = None
+        self.feat_scores = None
+        self.decorr_df = None
+        self.X_train_final = None
+        self.X_test_final = None
+        
+    def identify_correlated(self, threshold=0.75):
+        """ 
+    
+        Identifies and returns a df of bivariate correlations that surpass some correlation threshold value 
+        
+        df: input dataframe in which to test for correlations in
+        threshold: correlation coefficient value deemed unacceptable 
+    
+        """
+        
+        self.threshold = threshold
+        corrmat = self.X_train.corr().abs()
+        counter = 0
+        correlated_df = pd.DataFrame({'feature1':None, 'feature2':None}, index = range(1,1))
+        for row in range(0, corrmat.shape[0]-1): # do not need final row as should have compared against all already  
+            for col in range(row+1, corrmat.shape[1]): # for each column
+                if (corrmat.iloc[row,col] > threshold):
+                    counter += 1
+                    feat_df = pd.DataFrame({'feature1':corrmat.index[row],'feature2':corrmat.columns[col]}, index = range(1,2))
+                    correlated_df = pd.concat([correlated_df, feat_df], axis=0)
+                    
+        self.corr_df = correlated_df
+    
+    def feature_scores(self,method='MI'):
+        """
+        Scores the value of each feature according to the chosen definition of 'value'
+                  
+        method:
+            'IMP' = uses inherent importance score as defined by the model
+            'MI' = mutual information, selects feature with highest mi score (think this is very slow)
+            'SHAP' = uses shap value amongst contestant features
+        returns:
+            feature_scores: dataframe where first column contains feature name & second column their corresponding feature score
+        """
+        
+        self.method = method
+        
+        if self.method == 'SHAP':
+            self.model.fit(self.X_train, self.y_train)      
+            tree_explainer_ = shap.TreeExplainer(self.model) 
+            shap_values = tree_explainer_.shap_values(self.X_test)      
+            if len(np.array(shap_values).shape)==3:
+                shap_values = shap_values[1] # lgbm
+            elif len(np.array(shap_values).shape)==2:
+                shap_values = shap_values   # xgb
+            else:
+                raise ValueError('Shap values array does not meet expected dimension')
+            scores = abs(shap_values).mean(axis=0)
+                
+        elif self.method == 'MI':
+            discrete_index = [i for i,col in enumerate(self.X_train.columns) if len(self.X_train[col].unique()) == 2]
+            scores = mutual_info_classif(self.X_train, self.y_train, discrete_features=discrete_index)
+            
+        elif self.method == 'IMP':
+            self.model.fit(self.X_train, self.y_train)
+            scores = self.model.feature_importances_
+            
+        else:
+            raise ValueError('Method does not exist - try either string SHAP, MI or IMP') 
+            
+        self.feat_scores = pd.DataFrame({'Feature':self.X_train.columns,'Score':scores})
+
+    def remove_highly_correlated(self):
+    
+        '''
+        Of the highly correlated features, removes the feature with the lowest feature importance before re-running to evaluate feature importance rank 
+
+        '''
+        
+        self.identify_correlated(self.threshold) # changes self.corr_df
+        self.feature_scores(self.method) # changes self.feat_scores
+        cols = self.feat_scores.columns.tolist()
+    
+        chosen_feature = []
+        for row in range(0,self.corr_df.shape[0]):
+            feat1 = self.corr_df.iloc[row,][0]
+            feat2 = self.corr_df.iloc[row,][1]
+            if ( self.feat_scores.loc[self.feat_scores[cols[0]]==feat1,cols[1]].values[0] < self.feat_scores.loc[self.feat_scores[cols[0]]==feat2,cols[1]].values[0] ):
+                chosen_feature += [feat1]
+            else:
+                chosen_feature += [feat2]
+        
+        # This part handles scenario where a feature is correlated multiple times # 
+        feat_count = pd.Series(self.corr_df.values.ravel()).dropna().value_counts()
+        keep_feats = [  i for i in feat_count.index if chosen_feature.count(i) == feat_count[feat_count.index == i].values[0]  ]
+        non_corr_features = [i for i in self.X_train.columns if i not in feat_count.index.tolist()]
+        
+        decorrelated_df = self.X_train[keep_feats+non_corr_features]
+        
+        # Check no correlated features remain in dataset # 
+        if ((decorrelated_df.corr() > self.threshold).sum() > 1).sum() == 0:
+            pass
+        else:
+            raise ValueError('Highly correlated features persist - check!')
+        
+        self.decorr_df = decorrelated_df
+    
+    
+    def rfe_removal(self, step=10, min_features = 20):
+            
+            """
+            Recursively removes features based on their shap values
+            
+
+            step:
+                number of features to remove at each iteration
+            min_features:
+                minimum number of features to include in model if do not reach stopping point as defined by the performance_prop parameter
+            """
+            
+            # Step 1 : Find the metric when using all decorrelated features available # 
+            model_instance = self.model.fit(self.X_train,self.y_train)
+            top_shap_features = self.X_train.columns.tolist()
+            feat_count = len(top_shap_features)
+            og_feat_count = feat_count
+            print('\n###### Full Feature Set #######\n')
+            model_eval(model_instance, self.X_train, self.y_train, self.X_test, self.y_test)
+
+            # Each loop decreases the number of features in the model # 
+            for i in list( range(feat_count, min_features, -step)) + [min_features]:
+                print('Number of features:', i)
+                if i == og_feat_count:
+                    X_train_final = self.X_train
+                    X_test_final = self.X_test
+                else:  
+                    model_instance = model_instance.fit(X_train_final,self.y_train)
+                # EVALUATE PERFORMANCE # 
+                print('\n###### EVAL #######\n')
+                new_results = model_eval(model_instance, X_train_final, self.y_train, X_test_final, self.y_test)
+                display(new_results)
+                # Recalculates the SHAP values on each iteration #
+                shap_ = shap.TreeExplainer(model_instance)
+                shap_values = shap_.shap_values(X_test_final)
+                df_shap = pd.DataFrame(data=shap_values, columns=top_shap_features, index=self.X_test.index)
+                shap_scores = pd.DataFrame(df_shap.abs().mean(axis=0),columns=['SHAP']).sort_values(by='SHAP',ascending=False)
+                removed_features = shap_scores.iloc[-step:].index.tolist()
+                top_shap_features = shap_scores.iloc[0:-step].index.tolist()
+                
+                if len(top_shap_features) < min_features:
+                    missing_count = min_features - len(top_shap_features)
+                    top_shap_features = top_shap_features + removed_features[:missing_count]
+                    
+                X_train_final = self.X_train.copy()[top_shap_features]
+                X_test_final = self.X_test.copy()[top_shap_features]
+                print('Number of top shap features',len(X_train_final))
+                
+            self.X_train_final = X_train_final.copy() 
+            self.X_test_final = X_test_final.copy()
+            
+            
+#### MODEL ROBUSTNESS USING CV FOLDS (CLASSIFICATION) ##### 
+CV_nfold= 5
+
+if CV_nfold is not None:
+    print('')
+    print('################ Cross validation - {} folds ##################'.format(CV_nfold))
+    skf = StratifiedKFold(n_splits=CV_nfold, shuffle=True)
+
+    train_performance_cv = []
+    test_performance_cv = []
+    
+    cv_prob_df = pd.DataFrame({'account_number':X_train_subset.index.tolist()})
+    cv_prob_df['account_number'] = cv_prob_df['account_number'].astype('int64')
+    
+    counter = 0
+    for train, test in skf.split(X_train_subset,y_train):
+        counter += 1
+        X_train_cv, y_train_cv = X_train_subset.iloc[train,:], y_train.iloc[train]
+        X_test_cv, y_test_cv = X_train_subset.iloc[test,:], y_train.iloc[test]
+
+        clf = lgbm.LGBMClassifier(random_state=random_state, metric='auc', n_jobs=8, **optimal_params)
+        clf.fit(X_train_cv, y_train_cv, **fit_params)
+        y_train_pred_cv = clf.predict_proba(X_train_cv)[:,1]
+        y_test_pred_cv = clf.predict_proba(X_test_cv)[:,1]
+        
+        # Store Results #
+        
+        colname = 'proba_'+ str(counter)
+        prob_df = pd.DataFrame({'account_number':X_train_cv.index.tolist()+X_test_cv.index.tolist(), colname:list(y_train_pred_cv)+list(y_test_pred_cv)})
+        prob_df['account_number'] = prob_df['account_number'].astype('int64')
+        cv_prob_df = pd.merge(cv_prob_df,prob_df, how = 'inner', left_on='account_number',right_on='account_number')
+        
+        train_performance_cv.append(roc_auc_score(y_train_cv,y_train_pred_cv))
+        test_performance_cv.append(roc_auc_score(y_test_cv,y_test_pred_cv))
+
+    cv_results = pd.DataFrame({'train':{'mean':np.mean(train_performance_cv),'std':np.std(train_performance_cv)},
+                               'test':{'mean':np.mean(test_performance_cv),'std':np.std(test_performance_cv)}})
+    cv_results.index.name='AUC'
+    print(cv_results.T)
+
+#### REGRESSION EXAMPLE ####
+print('################ Cross validation - {} folds ##################'.format(CV_nfold))
+skf = KFold(n_splits=CV_nfold, shuffle=True)
+
+train_performance_cv = []
+test_performance_cv = []
+
+cv_pred_df = pd.DataFrame({'account_number':X_train.index.tolist()})
+# cv_pred_df['account_number'] = cv_pred_df['account_number'].astype('int32')
+
+counter = 0
+for train, test in skf.split(X_train,y_train):
+    
+    counter += 1
+    X_train_cv, y_train_cv = X_train.iloc[train,:], y_train.iloc[train]
+    X_test_cv, y_test_cv = X_train.iloc[test,:], y_train.iloc[test]
+
+    reg_cv = lgbm.LGBMRegressor(random_state=random_state,objective='mae', n_jobs=-1,) #  **optimal_params
+    
+    reg_cv.fit(X_train_cv, y_train_cv) #  **fit_params
+    y_train_pred_cv = reg_cv.predict(X_train_cv)
+    y_test_pred_cv = reg_cv.predict(X_test_cv)
+    
+    # Store Results #
+    
+    colname = 'pred_'+ str(counter)
+    pred_df = pd.DataFrame({'account_number':X_train_cv.index.tolist()+X_test_cv.index.tolist(), colname:list(y_train_pred_cv)+list(y_test_pred_cv)})
+    # pred_df['account_number'] = pred_df['account_number'].astype('int32')
+    cv_pred_df = pd.merge(cv_pred_df,pred_df, how = 'inner', left_on='account_number',right_on='account_number')
+    
+    train_performance_cv.append(mean_absolute_error(y_train_cv,  y_train_pred_cv))
+    test_performance_cv.append(mean_absolute_error(y_test_cv,  y_test_pred_cv))
+
+cv_results = pd.DataFrame({'train':{'mean':np.mean(train_performance_cv),'std':np.std(train_performance_cv)},
+                           'test':{'mean':np.mean(test_performance_cv),'std':np.std(test_performance_cv)}})
+cv_results.index.name='MAE'
+print(cv_results.T)
+
+
+### CALIBRATION ###
+from sklearn.calibration import calibration_curve
+print('--------- RECENT DATA : HOLDOUT SET ---------------')
+prob_true, prob_pred = calibration_curve(y_test, lgbm_tuned.predict_proba(X_test_subset)[:,1], n_bins=10, normalize=False) # think set normalize = True if model does not naturally output probabilities i.e. SVM. Otherwise should only be False as should be feeding in probs. Believe is set to be deprecated
+plt.figure(figsize=(10,10))
+plt.plot([0, 1], [0, 1], linestyle='--', color='black')
+# plot model reliability
+plt.plot(prob_pred,prob_true, marker='.',color='blue')
+plt.xlabel('Average Predicted Probability in each bin')
+plt.ylabel('Ratio of positives')
+plt.legend(['perfect','live data'])
+plt.show()
