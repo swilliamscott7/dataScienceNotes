@@ -52,3 +52,38 @@ if __name__ == '__main__':
 	train_and_evaluate(args)
 else:
 	print('argsparse_examples.py is being imported into another module/script to be run instead. __name__ = nameofyourcurrentmodule instead')
+	
+	
+
+########### example 2 ##########
+def pipeline_orchestration(.......)
+
+def main():
+    parser = argparse.ArgumentParser(description='PE scoring')
+    parser.add_argument('--setup_file', type=str, help='Path to the json configuration file, to determine storage locations and the specific tuning of the offer allocation')
+    
+    args = parser.parse_args() 
+    
+    with open(args.setup_file) as json_file:
+        analysis_dicto = json.load(json_file)
+        
+    pipeline_orchestration(analysis_dicto['SCORING_DATA_PATHS'],
+                           analysis_dicto['BUCKET_ID'],
+                           analysis_dicto['BUCKET'],
+                           analysis_dicto['MODEL_PATH'],
+                           analysis_dicto['MODEL_PATH_LOGREG'],
+                           analysis_dicto['OPTBIN_PATH'],
+                           analysis_dicto['OPTBIN_COLS'],
+                           analysis_dicto['MAIN_KEY'],
+                           analysis_dicto['PREPRO_OPERATIONS_DICT'],
+                           analysis_dicto['ROOT_PATH'],
+                           analysis_dicto['DISCOUNT_LEVELS'],
+                           analysis_dicto['DISCOUNT_LEVELS_LOGREG'],
+                           analysis_dicto['REALLOCATION_PERCENTILES'],
+                           analysis_dicto['BATCH_SIZE'],
+                           output_filename='PE_UK_DTV_CustomerBase_Scored_July2022_Retrain_5030150',
+                           default_csv_filename='PE_UK_scoring_data_tmp_test',
+                           log_file=analysis_dicto['LOG_FILE_NAME'])
+
+if __name__ == "__main__":
+    main()
